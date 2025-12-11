@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>El 1% · Pantalla grande</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/qrious@4.0.2/dist/qrious.min.js"></script>
+</head>
+<body>
+  <header>
+    <div class="flex">
+      <h1>El 1% · Pantalla grande</h1>
+      <span class="pill" id="phaseBadge">—</span>
+    </div>
+    <div class="flex">
+      <span class="pill" id="codeBadge">Código: —</span>
+      <span class="pill" id="countsBadge">0 / 0</span>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="card">
+      <div class="section-title">
+        <h2>Selecciona partida</h2>
+        <button class="btn secondary" id="saveGameBtn">Guardar</button>
+      </div>
+      <div class="form-row">
+        <input id="gameIdInput" class="input" placeholder="Game ID (lo da el presentador)">
+        <button class="btn" id="loadGameBtn">Cargar</button>
+      </div>
+      <p class="hint">Pega el Game ID que aparece en la consola del presentador. El código para jugadores se mostrará automáticamente.</p>
+      <div class="grid two" style="align-items:center;">
+        <div>
+          <p class="hint">Enlace para jugadores:</p>
+          <a id="joinLink" class="pill" href="#" target="_blank" rel="noreferrer">—</a>
+        </div>
+        <div style="justify-self:end;">
+          <canvas id="qrCanvas" width="150" height="150" aria-label="QR para unirse"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="section-title">
+        <h2 id="questionTitle">Esperando...</h2>
+        <span class="badge timer-big" id="timeBadge">—</span>
+      </div>
+      <div class="timer-bar timer-bar-big" id="timerBar" style="display:none;">
+        <div class="timer-fill" id="timerFill"></div>
+      </div>
+      <p id="questionText" class="hint">Cuando el presentador abra una pregunta, aparecerá aquí.</p>
+      <img id="questionImage" class="question-image-large" style="display:none;" alt="">
+      <div id="optionsContainer" class="options-grid"></div>
+    </section>
+
+    <section class="card" id="resultsCard" style="display:none;">
+      <div class="section-title">
+        <h2>Resumen de la ronda</h2>
+      </div>
+      <div id="resultsBody" class="grid" style="gap:8px;"></div>
+    </section>
+  </main>
+
+  <script>
+    const phaseBadge = document.getElementById('phaseBadge');
+    const codeBadge = document.getElementById('codeBadge');
+    const countsBadge = document.getElementById('countsBadge');
+    const questionTitle = document.getElementById('questionTitle');
+    const questionText = document.getElementById('questionText');
+    const questionImage = document.getElementById('questionImage');
+    const optionsContainer = document.getElementById('optionsContainer');
+    const timeBadge = document.getElementById('timeBadge');
+    const gameIdInput = document.getElementById('gameIdInput');
+    const loadBtn = document.getElementById('loadGameBtn');
+    const saveBtn = document.getElementById('saveGameBtn');
+    const timerBar = document.getElementById('timerBar');
+    const timerFill = document.getElementById('timerFill');
+    const resultsCard = document.getElementById('resultsCard');
+    const resultsBody = document.getElementById('resultsBody');
+    const qrCanvas = document.getElementById('qrCanvas');
+    const joinLink = document.getElementById('joinLink');
+    let qr;
+
+    let gameId = localStorage.getItem('screen_game_id') || '';
+    let poll = null;
+    let timerInterval = null;
+    let timerEndsAt = null;
+    let timerTotal = null;
+
+    function setGameId(id) {
+      gameId = id.trim();
+      gameIdInput.value = gameId;
+      if (poll) clearInterval(poll);
+      if (gameId) {
+        fetchState();
+        poll = setInterval(fetchState, 1400);
+      }
+    }
+
+    async function fetchState() {
+      if (!gameId) return;
+      try {
+        const res = await fetch(`/api/games/${gameId}/screen/state`);
+        if (!res.ok) throw new Error('No se pudo cargar estado');
+        const state = await res.json();
+        render(state);
+      } catch (e) {
+        questionText.textContent = e.message;
+      }
+    }
+
+    function stopTimer() {
+      if (timerInterval) clearInterval(timerInterval);
+      timerInterval = null;
+      timerEndsAt = null;
+      timerTotal = null;
+    }
+
+    function startTimer(timeLeft, total) {
+      stopTimer();
+      timerEndsAt = Date.now() + timeLeft;
+      timerTotal = total || timeLeft;
+      updateTimerBar();
+      timerInterval = setInterval(updateTimerBar, 150);
+    }
+
+    function updateTimerBar() {
+      if (!timerEndsAt || !timerTotal) return;
+      const remaining = Math.max(0, timerEndsAt - Date.now());
+      const pct = Math.max(0, Math.min(100, (remaining / timerTotal) * 100));
+      timerFill.style.width = pct + '%';
+      timeBadge.textContent = `Tiempo: ${(remaining / 1000).toFixed(1)}s`;
+      if (remaining <= 0) stopTimer();
+    }
+
+    function render(state) {
+      phaseBadge.textContent = state.phase.toUpperCase();
+      codeBadge.textContent = `Código: ${state.code || '—'}`;
+      countsBadge.textContent = `${state.alive_count} vivos · ${state.total_players} jugadores`;
+      if (state.code) {
+        const url = `${window.location.origin}/?code=${encodeURIComponent(state.code)}`;
+        joinLink.textContent = url;
+        joinLink.href = url;
+        if (!qr) {
+          qr = new QRious({ element: qrCanvas, size: 150, value: url, level: 'H' });
+        } else {
+          qr.value = url;
+        }
+      }
+      const timeLeft = state.answer_time_left_ms ?? null;
+      if (!state.current_question) {
+        questionTitle.textContent = 'Esperando pregunta...';
+        questionText.textContent = 'El presentador aún no ha abierto la ronda.';
+        questionImage.style.display = 'none';
+        optionsContainer.innerHTML = '';
+        timeBadge.textContent = '—';
+        timerBar.style.display = 'none';
+        stopTimer();
+        resultsCard.style.display = 'none';
+        return;
+      }
+
+      if (state.phase === 'intermission') {
+        questionImage.style.display = 'none';
+        optionsContainer.innerHTML = '';
+        timerBar.style.display = 'none';
+        stopTimer();
+        timeBadge.textContent = '—';
+        questionTitle.textContent = '';
+        questionText.textContent = '';
+        const aliveList = (state.intermission_alive || []).slice().sort((a, b) => b.score - a.score);
+        const eliminatedList = (state.intermission_eliminated || []).slice().sort((a, b) => b.score - a.score);
+        const renderRow = (player, status) => `
+          <div class="status-row" style="justify-content:space-between;align-items:center;">
+            <div><strong>${player.name}</strong> <span class="hint">${status}</span></div>
+            <div class="status-row" style="gap:6px;">
+              <span class="badge">${Math.round(player.score)} pts</span>
+              ${player.cashed_out ? '<span class="badge cashout">💰 plantado</span>' : ''}
+              ${player.joker_available ? '<span class="badge info">🎟️ comodín</span>' : ''}
+              ${player.last_eliminated ? '<span class="badge danger">⏱️ última ronda</span>' : ''}
+            </div>
+          </div>
+        `;
+        resultsCard.style.display = 'block';
+        resultsCard.querySelector('h2').textContent = 'Recuento de partida';
+        resultsBody.innerHTML = `
+          <h3>Siguen en juego</h3>
+          ${aliveList.length ? aliveList.map(p => renderRow(p, 'Vivo')).join('') : '<p class="hint">—</p>'}
+          <h3>Eliminados / Plantados</h3>
+          ${eliminatedList.length ? eliminatedList.map(p => renderRow(p, p.cashed_out ? 'Plantado' : 'Eliminado')).join('') : '<p class="hint">—</p>'}
+        `;
+        return;
+      }
+
+      resultsCard.style.display = 'none';
+      const q = state.current_question;
+      questionTitle.textContent = q.text;
+      questionText.textContent = '';
+      if (state.phase === 'answering' && timeLeft !== null) {
+        const total = (q.time_limit_seconds || 0) * 1000 || timeLeft;
+        timerBar.style.display = 'block';
+        startTimer(timeLeft, total);
+      } else {
+        timerBar.style.display = 'none';
+        stopTimer();
+        timeBadge.textContent = q.time_limit_seconds ? `Tiempo: ${q.time_limit_seconds}s` : '—';
+      }
+
+      if (q.image) {
+        questionImage.src = q.image;
+        questionImage.alt = q.text;
+        questionImage.style.display = 'block';
+      } else {
+        questionImage.style.display = 'none';
+      }
+
+      optionsContainer.innerHTML = '';
+      if (q.options && q.options.length) {
+        q.options.forEach(opt => {
+          const card = document.createElement('div');
+          card.className = 'option-card';
+          card.style.cursor = 'default';
+          card.innerHTML = `
+            ${opt.image ? `<img src="${opt.image}" alt="${opt.text || opt.id}">` : ''}
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <div>
+                <strong>${opt.text || ''}</strong>
+                <div class="hint">Opción ${opt.id.toUpperCase()}</div>
+              </div>
+              <span class="badge">${opt.id.toUpperCase()}</span>
+            </div>
+          `;
+          optionsContainer.appendChild(card);
+        });
+      }
+
+      if (state.phase === 'results' && state.last_result) {
+        resultsCard.style.display = 'block';
+        const res = state.last_result;
+        const correct = (res.players_correct_names || []).join(', ') || '—';
+        const wrong = (res.players_wrong_names || []).join(', ') || '—';
+        const joker = (res.players_joker_names || []).join(', ') || '—';
+        resultsBody.innerHTML = `
+          <p class="hint"><strong>Correctos:</strong> ${correct}</p>
+          <p class="hint"><strong>Eliminados esta ronda:</strong> ${wrong}</p>
+          <p class="hint"><strong>Comodín:</strong> ${joker}</p>
+        `;
+      } else {
+        resultsCard.style.display = 'none';
+        resultsBody.innerHTML = '';
+      }
+    }
+
+    loadBtn.addEventListener('click', () => setGameId(gameIdInput.value));
+    saveBtn.addEventListener('click', () => {
+      if (gameId) localStorage.setItem('screen_game_id', gameId);
+    });
+
+    if (gameId) {
+      setGameId(gameId);
+    }
+  </script>
+</body>
+</html>

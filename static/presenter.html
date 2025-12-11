@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>El 1% · Presentador</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header>
+    <div class="flex">
+      <h1>El 1% · Presentador</h1>
+      <span class="pill" id="phaseBadge">—</span>
+    </div>
+    <div class="flex">
+      <span class="pill" id="codeBadge">Código: —</span>
+      <span class="pill" id="gameIdBadge">Game ID: —</span>
+      <button class="btn secondary" id="clearBtn">Olvidar partida</button>
+    </div>
+  </header>
+
+  <main class="layout grid">
+    <section class="card">
+      <div class="section-title">
+        <h2>Configurar partida</h2>
+      </div>
+      <div class="grid two">
+        <form id="createForm" class="grid" style="gap:10px;">
+          <h3>Crear nueva</h3>
+          <input id="presenterNameInput" class="input" placeholder="Tu nombre" required>
+          <button class="btn" type="submit">Crear partida</button>
+          <p class="hint">Guarda el Game ID y el presenter token para reconectar.</p>
+        </form>
+        <form id="loadForm" class="grid" style="gap:10px;">
+          <h3>Cargar existente</h3>
+          <input id="gameIdInput" class="input" placeholder="Game ID" required>
+          <input id="presenterTokenInput" class="input" placeholder="Presenter token" required>
+          <button class="btn secondary" type="submit">Conectar</button>
+        </form>
+      </div>
+      <p class="hint" id="setupHint"></p>
+    </section>
+
+    <section class="grid two">
+      <div class="card">
+        <div class="section-title">
+          <h3>Estado</h3>
+          <span class="badge" id="playersBadge">0 jugadores</span>
+        </div>
+        <p id="stateText" class="hint">Sin conexión.</p>
+        <div class="status-row">
+          <span class="badge" id="questionBadge">Pregunta: —</span>
+          <span class="badge" id="timerBadge">Tiempo: —</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="section-title">
+          <h3>Control de ronda</h3>
+          <button class="btn danger" id="finishBtn">Terminar partida</button>
+        </div>
+        <div class="grid" style="gap:10px;">
+          <label class="hint">Selecciona pregunta (o deja vacío para la siguiente en orden)</label>
+          <select id="questionSelect" class="input">
+            <option value="">Siguiente en orden</option>
+          </select>
+          <div class="form-row">
+            <button class="btn" id="nextBtn" type="button">Ir a pregunta</button>
+            <input id="durationInput" class="input" type="number" min="5" max="120" placeholder="Duración (s)">
+            <button class="btn secondary" id="openBtn" type="button">Abrir respuestas</button>
+            <button class="btn secondary" id="closeBtn" type="button">Cerrar y corregir</button>
+          </div>
+          <div class="form-row">
+            <button class="btn secondary" id="cashoutOpenKeepBtn" type="button">Abrir plantarse (mantener)</button>
+            <button class="btn secondary" id="cashoutCloseKeepBtn" type="button">Cerrar plantarse (mantener)</button>
+          </div>
+          <div class="form-row">
+            <button class="btn secondary" id="cashoutOpenBoostBtn" type="button">Abrir plantarse (x1.5)</button>
+            <button class="btn secondary" id="cashoutCloseBoostBtn" type="button">Cerrar plantarse (x1.5)</button>
+          </div>
+          <div class="form-row">
+            <button class="btn" id="intermissionBtn" type="button">Mostrar resumen ronda</button>
+          </div>
+          <div class="form-row">
+            <span class="hint" id="cashoutStatusKeep">Plantarse mantener: cerrado</span>
+            <span class="hint" id="cashoutStatusBoost">Plantarse x1.5: cerrado</span>
+          </div>
+          <p class="hint" id="controlHint"></p>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="section-title">
+        <h3>Jugadores</h3>
+      </div>
+      <div style="overflow:auto;">
+        <table class="table" id="playersTable">
+          <thead>
+            <tr>
+              <th>Nombre</th>
+              <th>Estado</th>
+              <th>Puntos</th>
+              <th>Comodín</th>
+              <th>Última respuesta</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="section-title">
+        <h3>Resultados</h3>
+      </div>
+      <div id="resultsContainer">
+        <p class="hint">Cierra una pregunta para ver el desglose.</p>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const createForm = document.getElementById('createForm');
+    const loadForm = document.getElementById('loadForm');
+    const presenterNameInput = document.getElementById('presenterNameInput');
+    const gameIdInput = document.getElementById('gameIdInput');
+    const presenterTokenInput = document.getElementById('presenterTokenInput');
+    const setupHint = document.getElementById('setupHint');
+    const codeBadge = document.getElementById('codeBadge');
+    const gameIdBadge = document.getElementById('gameIdBadge');
+    const phaseBadge = document.getElementById('phaseBadge');
+    const playersBadge = document.getElementById('playersBadge');
+    const stateText = document.getElementById('stateText');
+    const questionBadge = document.getElementById('questionBadge');
+    const timerBadge = document.getElementById('timerBadge');
+    const questionSelect = document.getElementById('questionSelect');
+    const controlHint = document.getElementById('controlHint');
+    const durationInput = document.getElementById('durationInput');
+    const playersTableBody = document.querySelector('#playersTable tbody');
+    const resultsContainer = document.getElementById('resultsContainer');
+    const clearBtn = document.getElementById('clearBtn');
+    const nextBtn = document.getElementById('nextBtn');
+    const openBtn = document.getElementById('openBtn');
+    const closeBtn = document.getElementById('closeBtn');
+    const finishBtn = document.getElementById('finishBtn');
+    const cashoutOpenKeepBtn = document.getElementById('cashoutOpenKeepBtn');
+    const cashoutCloseKeepBtn = document.getElementById('cashoutCloseKeepBtn');
+    const cashoutOpenBoostBtn = document.getElementById('cashoutOpenBoostBtn');
+    const cashoutCloseBoostBtn = document.getElementById('cashoutCloseBoostBtn');
+    const cashoutStatusKeep = document.getElementById('cashoutStatusKeep');
+    const cashoutStatusBoost = document.getElementById('cashoutStatusBoost');
+    const intermissionBtn = document.getElementById('intermissionBtn');
+
+    let gameId = localStorage.getItem('presenter_game_id') || '';
+    let presenterToken = localStorage.getItem('presenter_token') || '';
+    let presenterName = localStorage.getItem('presenter_name') || '';
+    let questions = [];
+    let poll = null;
+    let currentQuestionId = null;
+
+    async function fetchQuestions() {
+      const res = await fetch('/api/questions?include_correct=true');
+      questions = await res.json();
+      questionSelect.innerHTML = '<option value=\"\">Siguiente en orden</option>';
+      questions.forEach(q => {
+        const opt = document.createElement('option');
+        opt.value = q.id;
+        opt.textContent = `${q.order}. ${q.text}`;
+        questionSelect.appendChild(opt);
+      });
+    }
+
+    function persist() {
+      localStorage.setItem('presenter_game_id', gameId);
+      localStorage.setItem('presenter_token', presenterToken);
+      localStorage.setItem('presenter_name', presenterName);
+    }
+
+    function resetState() {
+      gameId = '';
+      presenterToken = '';
+      currentQuestionId = null;
+      persist();
+      updateBadges();
+      if (poll) clearInterval(poll);
+      stateText.textContent = 'Sin conexión.';
+      playersTableBody.innerHTML = '';
+      resultsContainer.innerHTML = '<p class="hint">Cierra una pregunta para ver el desglose.</p>';
+    }
+
+    clearBtn.addEventListener('click', () => {
+      localStorage.removeItem('presenter_game_id');
+      localStorage.removeItem('presenter_token');
+      localStorage.removeItem('presenter_name');
+      resetState();
+    });
+
+    createForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      try {
+        setupHint.textContent = 'Creando partida...';
+        const res = await fetch('/api/games', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ presenter_name: presenterNameInput.value }),
+        });
+        if (!res.ok) throw new Error('No se pudo crear partida');
+        const data = await res.json();
+        gameId = data.game_id;
+        presenterToken = data.presenter_token;
+        presenterName = presenterNameInput.value;
+        persist();
+        updateBadges(data.code);
+        setupHint.textContent = 'Partida creada. Comparte el código con jugadores.';
+        startPolling();
+      } catch (err) {
+        setupHint.textContent = err.message;
+      }
+    });
+
+    loadForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      gameId = gameIdInput.value.trim();
+      presenterToken = presenterTokenInput.value.trim();
+      presenterName = presenterNameInput.value.trim() || presenterName;
+      persist();
+      startPolling();
+    });
+
+    function updateBadges(code) {
+      codeBadge.textContent = `Código: ${code || '—'}`;
+      gameIdBadge.textContent = `Game ID: ${gameId || '—'}`;
+    }
+
+    async function fetchState() {
+      if (!gameId || !presenterToken) return;
+      try {
+        const res = await fetch(`/api/games/${gameId}/presenter/state?presenter_token=${encodeURIComponent(presenterToken)}`);
+        if (!res.ok) throw new Error('No se pudo obtener estado');
+        const state = await res.json();
+        renderState(state);
+        if (state.phase === 'results' && state.current_question) {
+          fetchResults(state.current_question.id);
+        }
+      } catch (err) {
+        stateText.textContent = err.message;
+      }
+    }
+
+    function renderState(state) {
+      phaseBadge.textContent = state.phase.toUpperCase();
+      updateBadges(state.code);
+      currentQuestionId = state.current_question?.id || null;
+      cashoutStatusKeep.textContent = `Plantarse mantener: ${state.cashout_keep_open ? 'abierto' : 'cerrado'}`;
+      cashoutStatusBoost.textContent = `Plantarse x1.5: ${state.cashout_boost_open ? 'abierto' : 'cerrado'}`;
+      const orderedPlayers = [...state.players].sort((a, b) => {
+        const weight = (p) => {
+          if (p.status === 'alive') {
+            return p.joker_available ? 0 : 1;
+          }
+          if (p.status === 'cashed_out') return 2;
+          return 3;
+        };
+        const diff = weight(a) - weight(b);
+        if (diff !== 0) return diff;
+        return a.name.localeCompare(b.name);
+      });
+      playersBadge.textContent = `${orderedPlayers.length} jugadores`;
+      stateText.textContent = `Fase: ${state.phase}.`;
+      questionBadge.textContent = state.current_question ? `Pregunta: ${state.current_question.text}` : 'Pregunta: —';
+      timerBadge.textContent = state.answer_time_left_ms ? `Tiempo: ${(state.answer_time_left_ms / 1000).toFixed(1)}s` : 'Tiempo: —';
+
+      playersTableBody.innerHTML = '';
+      orderedPlayers.forEach(p => {
+        const tr = document.createElement('tr');
+        const status =
+          p.status === 'alive' ? 'Vivo' : p.status === 'cashed_out' ? 'Plantado' : 'Eliminado';
+        const statusClass = p.status === 'alive' ? 'success' : p.status === 'cashed_out' ? 'cashout' : 'danger';
+        tr.innerHTML = `
+          <td>${p.name}</td>
+          <td><span class="badge ${statusClass}">${status}</span></td>
+          <td>${Math.round(p.score)}</td>
+          <td>${p.joker_available ? 'Disponible' : p.joker_used_on_question_id ? 'Usado' : 'No'}</td>
+          <td>${p.last_answer ? `${p.last_answer}${p.last_answer_correct === true ? ' ✅' : p.last_answer_correct === false ? ' ❌' : ''}` : '-'}</td>
+          <td><button class="btn secondary" data-kick="${p.id}" style="padding:6px 10px;">Expulsar</button></td>
+        `;
+        playersTableBody.appendChild(tr);
+      });
+
+      // Kick listeners
+      playersTableBody.querySelectorAll('[data-kick]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const pid = btn.getAttribute('data-kick');
+          callAction('players/kick', { player_id: pid });
+        });
+      });
+    }
+
+    async function fetchResults(questionId) {
+      if (!gameId || !presenterToken) return;
+      try {
+        const res = await fetch(`/api/games/${gameId}/questions/${questionId}/results?presenter_token=${encodeURIComponent(presenterToken)}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        renderResults(data);
+      } catch (_) {}
+    }
+
+    function renderResults(resData) {
+      const counts = Object.entries(resData.option_counts || {}).map(([k, v]) => `<span class="badge">${k.toUpperCase()}: ${v}</span>`).join(' ');
+      const wrongNames = (resData.players_wrong_names || []).join(', ') || '—';
+      const jokerNames = (resData.players_joker_names || []).join(', ') || '—';
+      resultsContainer.innerHTML = `
+        <p><strong>Pregunta:</strong> ${resData.question_id}</p>
+        <p class="hint">Respuestas totales: ${resData.total_answers}</p>
+        <div class="status-row">${counts || '<span class="hint">Sin opciones.</span>'}</div>
+        <p class="hint">Correcta: ${resData.correct_option_id || resData.correct_free_text || 'N/A'}</p>
+        <p class="hint">Correctos: ${resData.players_correct.length} · Incorrectos: ${resData.players_wrong.length} · Comodín: ${resData.players_joker.length}</p>
+        <p class="hint"><strong>Fallaron:</strong> ${wrongNames}</p>
+        <p class="hint"><strong>Comodín:</strong> ${jokerNames}</p>
+      `;
+    }
+
+    nextBtn.addEventListener('click', () => {
+      const qid = questionSelect.value || null;
+      callAction('next-question', { question_id: qid });
+    });
+
+    openBtn.addEventListener('click', () => {
+      const qid = questionSelect.value || currentQuestionId || null;
+      const duration = durationInput.value ? Number(durationInput.value) : null;
+      callAction('open-answers', { question_id: qid, duration_seconds: duration });
+    });
+
+    closeBtn.addEventListener('click', () => {
+      const qid = questionSelect.value || currentQuestionId || null;
+      callAction('close-answers', { question_id: qid });
+    });
+
+    finishBtn.addEventListener('click', () => {
+      callAction('finish', {});
+    });
+
+    cashoutOpenKeepBtn.addEventListener('click', () => {
+      callAction('cashout/toggle', { open: true, kind: 'keep' });
+    });
+
+    cashoutCloseKeepBtn.addEventListener('click', () => {
+      callAction('cashout/toggle', { open: false, kind: 'keep' });
+    });
+
+    cashoutOpenBoostBtn.addEventListener('click', () => {
+      callAction('cashout/toggle', { open: true, kind: 'boost' });
+    });
+
+    cashoutCloseBoostBtn.addEventListener('click', () => {
+      callAction('cashout/toggle', { open: false, kind: 'boost' });
+    });
+
+    intermissionBtn.addEventListener('click', () => {
+      callAction('intermission', {});
+    });
+
+    async function callAction(action, extra) {
+      if (!gameId || !presenterToken) {
+        controlHint.textContent = 'Conéctate primero.';
+        return;
+      }
+      try {
+        controlHint.textContent = 'Enviando...';
+        let url = `/api/games/${gameId}/${action}`;
+        const payload = Object.assign({ presenter_token: presenterToken }, extra || {});
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.detail || 'Error en acción');
+        }
+        controlHint.textContent = 'OK';
+        fetchState();
+      } catch (err) {
+        controlHint.textContent = err.message;
+      }
+    }
+
+    function startPolling() {
+      if (!gameId || !presenterToken) {
+        setupHint.textContent = 'Falta Game ID o token.';
+        return;
+      }
+      setupHint.textContent = 'Conectado.';
+      updateBadges();
+      if (poll) clearInterval(poll);
+      fetchState();
+      poll = setInterval(fetchState, 1200);
+    }
+
+    // Load initial data
+    fetchQuestions();
+    if (gameId && presenterToken) {
+      gameIdInput.value = gameId;
+      presenterTokenInput.value = presenterToken;
+      presenterNameInput.value = presenterName;
+      startPolling();
+    }
+  </script>
+</body>
+</html>

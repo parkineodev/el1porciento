@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 140" role="img" aria-label="Banderas">
+  <rect width="200" height="140" fill="#0b172a"/>
+  <text x="100" y="26" fill="#e5e7eb" font-family="Arial, sans-serif" font-size="16" text-anchor="middle">¿Cuál es la bandera de España?</text>
+  <rect x="25" y="50" width="60" height="18" fill="#e5e7eb"/>
+  <rect x="25" y="68" width="60" height="18" fill="#ef4444"/>
+  <rect x="25" y="86" width="60" height="18" fill="#e5e7eb"/>
+  <rect x="85" y="50" width="60" height="54" fill="#e5e7eb"/>
+  <rect x="145" y="50" width="60" height="18" fill="#ef4444"/>
+  <rect x="145" y="68" width="60" height="18" fill="#facc15"/>
+  <rect x="145" y="86" width="60" height="18" fill="#ef4444"/>
+</svg>

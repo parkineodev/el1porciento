@@ -1,0 +1,118 @@
+questions:
+  - id: q1_pentagon
+    order: 1
+    type: single_choice
+    text: "Which of these images is a pentagon?"
+    image: "/static/images/preguntas/q1_pentagon.svg"
+    points: 10
+    time_limit_seconds: 30
+    options:
+      - id: a
+        text: "Triangle"
+        image: "/static/images/opciones/q1_a.svg"
+        correct: false
+      - id: b
+        text: "Pentagon"
+        image: "/static/images/opciones/q1_b.svg"
+        correct: true
+      - id: c
+        text: "Square"
+        image: "/static/images/opciones/q1_c.svg"
+        correct: false
+      - id: d
+        text: "Hexagon"
+        image: "/static/images/opciones/q1_d.svg"
+        correct: false
+
+  - id: q2_circles
+    order: 2
+    type: free_text
+    text: "How many circles do you see in the image?"
+    image: "/static/images/preguntas/q2_circles.svg"
+    points: 12
+    time_limit_seconds: 25
+    correct_free_text: "5"
+
+  - id: q3_flags
+    order: 3
+    type: single_choice
+    text: "Which flag belongs to Spain?"
+    image: "/static/images/preguntas/q3_flags.svg"
+    points: 15
+    time_limit_seconds: 25
+    options:
+      - id: a
+        text: "Germany"
+        image: "/static/images/opciones/q3_a.svg"
+        correct: false
+      - id: b
+        text: "Italy"
+        image: "/static/images/opciones/q3_b.svg"
+        correct: false
+      - id: c
+        text: "Spain"
+        image: "/static/images/opciones/q3_c.svg"
+        correct: true
+      - id: d
+        text: "France"
+        image: "/static/images/opciones/q3_d.svg"
+        correct: false
+
+  - id: q4_season
+    order: 4
+    type: single_choice
+    text: "After spring, which season comes next?"
+    image: "/static/images/preguntas/q4_season.svg"
+    points: 10
+    time_limit_seconds: 20
+    options:
+      - id: a
+        text: "Winter"
+        image: "/static/images/opciones/q4_a.svg"
+        correct: false
+      - id: b
+        text: "Autumn"
+        image: "/static/images/opciones/q4_b.svg"
+        correct: false
+      - id: c
+        text: "Summer"
+        image: "/static/images/opciones/q4_c.svg"
+        correct: true
+      - id: d
+        text: "Rainy season"
+        image: "/static/images/opciones/q4_d.svg"
+        correct: false
+
+  - id: q5_minutes
+    order: 5
+    type: free_text
+    text: "How many minutes are in one hour and a half?"
+    image: "/static/images/preguntas/q5_minutes.svg"
+    points: 12
+    time_limit_seconds: 20
+    correct_free_text: "90"
+
+  - id: q6_octagon
+    order: 6
+    type: single_choice
+    text: "How many sides does an octagon have?"
+    image: "/static/images/preguntas/q6_octagon.svg"
+    points: 20
+    time_limit_seconds: 20
+    options:
+      - id: a
+        text: "6"
+        image: "/static/images/opciones/q6_a.svg"
+        correct: false
+      - id: b
+        text: "7"
+        image: "/static/images/opciones/q6_b.svg"
+        correct: false
+      - id: c
+        text: "8"
+        image: "/static/images/opciones/q6_c.svg"
+        correct: true
+      - id: d
+        text: "9"
+        image: "/static/images/opciones/q6_d.svg"
+        correct: false

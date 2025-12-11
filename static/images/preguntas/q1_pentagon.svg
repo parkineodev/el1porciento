@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 140" role="img" aria-label="Pentagon highlight">
+  <rect width="200" height="140" fill="#0b172a"/>
+  <polygon points="100,20 160,70 135,130 65,130 40,70" fill="#22d3ee" stroke="#0ea5e9" stroke-width="6" />
+  <text x="100" y="125" fill="#0b172a" font-family="Arial, sans-serif" font-weight="bold" font-size="24" text-anchor="middle">Pentagon</text>
+</svg>

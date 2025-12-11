@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80" role="img" aria-label="Spain flag">
+  <rect width="120" height="24" fill="#ef4444"/>
+  <rect y="24" width="120" height="32" fill="#facc15"/>
+  <rect y="56" width="120" height="24" fill="#ef4444"/>
+  <rect x="24" y="30" width="18" height="20" fill="#b91c1c"/>
+</svg>

@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>El 1% · Jugador</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div id="overlay" class="overlay">
+    <div class="overlay-content" id="overlayContent">
+      <span class="icon" id="overlayIcon">✔</span>
+      <h2 id="overlayTitle">Respuesta enviada</h2>
+      <p id="overlaySub" class="hint" style="color:#cbd5e1;">Espera al final del tiempo</p>
+    </div>
+  </div>
+
+  <header>
+    <div class="flex">
+      <h1>El 1% · Jugador</h1>
+      <span class="pill" id="playerBadge">Sin unir</span>
+    </div>
+    <div class="flex">
+      <span class="pill" id="codeBadge">Código: —</span>
+      <span class="pill" id="scoreBadge">Puntos: 0</span>
+      <button class="btn secondary" id="resetBtn" style="display:none;">Salir</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <div class="hero">
+      <p class="hint">Ingresa el código que te dé el presentador y tu nombre. Cuando abra la pregunta, podrás responder, usar tu comodín o plantarte.</p>
+      <p class="hint"><strong>Reglas:</strong> Acumulas los puntos de cada pregunta si aciertas. Si fallas en cualquier momento pierdes y tu puntuación se reduce al 50%. Puedes plantarte en las oportunidades indicadas: la primera mantiene tu puntuación, la segunda la multiplica por 1.5. Si te plantas, sales del juego con esos puntos. Si sigues hasta el final y ganas, sumas los puntos de la última pregunta.</p>
+    </div>
+
+    <section id="joinSection" class="card">
+      <div class="section-title">
+        <h2>Unirse a la partida</h2>
+      </div>
+      <form id="joinForm" class="grid two">
+        <input id="codeInput" class="input" placeholder="Código (ej: F7K2)" maxlength="8" required>
+        <input id="nameInput" class="input" placeholder="Tu nombre" minlength="2" required>
+        <button type="submit" class="btn">Unirme</button>
+      </form>
+      <p class="hint" id="joinHint"></p>
+    </section>
+
+    <section id="gameSection" class="grid two" style="display:none;">
+      <div class="card question" id="questionCard">
+        <div class="section-title">
+          <h2 id="questionTitle">Esperando pregunta…</h2>
+          <div class="flex" style="gap:8px;">
+            <button id="jokerBtn" class="btn secondary" style="padding:8px 12px;">Usar comodín</button>
+            <span class="badge" id="phaseBadge">LOBBY</span>
+          </div>
+        </div>
+        <div class="timer-bar" style="display:none;" id="timerBar">
+          <div class="timer-fill" id="timerFill"></div>
+        </div>
+        <img id="questionImage" class="question-image-large" alt="" style="display:none;">
+        <p id="questionText" class="hint">El presentador abrirá la siguiente pregunta.</p>
+        <div id="optionsContainer" class="options-grid tight"></div>
+        <div id="freeTextContainer" style="display:none; gap:10px;" class="form-row">
+          <input id="freeTextInput" class="input" placeholder="Escribe tu respuesta">
+          <button class="btn" type="button" id="sendTextBtn">Enviar</button>
+        </div>
+        <div class="status-row">
+          <span class="badge" id="aliveBadge">Estado: —</span>
+          <span class="badge" id="answerBadge">Respuesta: —</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="section-title">
+          <h3>Acciones</h3>
+        </div>
+        <div class="grid" style="gap:10px;">
+          <div class="form-row">
+            <button class="btn secondary" id="cashoutKeepBtn" type="button">Plantarse (mantener)</button>
+            <button class="btn secondary" id="cashoutBoostBtn" type="button">Plantarse x1.5</button>
+          </div>
+          <p class="hint" id="actionHint">Solo se puede responder cuando la pregunta está abierta.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const overlay = document.getElementById('overlay');
+    const overlayIcon = document.getElementById('overlayIcon');
+    const overlayTitle = document.getElementById('overlayTitle');
+    const overlaySub = document.getElementById('overlaySub');
+    const joinForm = document.getElementById('joinForm');
+    const joinSection = document.getElementById('joinSection');
+    const gameSection = document.getElementById('gameSection');
+    const questionTitle = document.getElementById('questionTitle');
+    const questionText = document.getElementById('questionText');
+    const questionImage = document.getElementById('questionImage');
+    const optionsContainer = document.getElementById('optionsContainer');
+    const freeTextContainer = document.getElementById('freeTextContainer');
+    const freeTextInput = document.getElementById('freeTextInput');
+    const sendTextBtn = document.getElementById('sendTextBtn');
+    const phaseBadge = document.getElementById('phaseBadge');
+    const aliveBadge = document.getElementById('aliveBadge');
+    const answerBadge = document.getElementById('answerBadge');
+    const codeBadge = document.getElementById('codeBadge');
+    const scoreBadge = document.getElementById('scoreBadge');
+    const playerBadge = document.getElementById('playerBadge');
+    const jokerBtn = document.getElementById('jokerBtn');
+    const joinHint = document.getElementById('joinHint');
+    const actionHint = document.getElementById('actionHint');
+    const timerBar = document.getElementById('timerBar');
+    const timerFill = document.getElementById('timerFill');
+    const resetBtn = document.getElementById('resetBtn');
+    const questionCard = document.getElementById('questionCard');
+    const cashoutKeepBtn = document.getElementById('cashoutKeepBtn');
+    const cashoutBoostBtn = document.getElementById('cashoutBoostBtn');
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const initialCodeParam = (urlParams.get('code') || '').toUpperCase();
+
+    const storage = {
+      get() {
+        return {
+          gameId: localStorage.getItem('player_game_id'),
+          playerToken: localStorage.getItem('player_token'),
+          playerName: localStorage.getItem('player_name'),
+          code: localStorage.getItem('player_code'),
+        };
+      },
+      set({ gameId, playerToken, playerName, code }) {
+        localStorage.setItem('player_game_id', gameId);
+        localStorage.setItem('player_token', playerToken);
+        localStorage.setItem('player_name', playerName);
+        localStorage.setItem('player_code', code);
+      },
+      clear() {
+        ['player_game_id', 'player_token', 'player_name', 'player_code'].forEach(k => localStorage.removeItem(k));
+      }
+    };
+
+    let pollInterval = null;
+    let lastState = null;
+    let currentQuestionId = null;
+    let freeTextDraft = '';
+    let timerInterval = null;
+    let timerEndsAt = null;
+    let timerTotal = null;
+    let autoSubmittedFor = null;
+    let autoSubmitTimeout = null;
+
+    function setStatus(text, color) {
+      playerBadge.textContent = text;
+      if (color) {
+        playerBadge.style.background = color;
+      }
+    }
+
+    function showOverlay(type, title, sub) {
+      overlay.className = `overlay visible ${type}`;
+      overlayIcon.textContent = type === 'danger' ? '✖' : '✔';
+      overlayTitle.textContent = title;
+      overlaySub.textContent = sub || '';
+    }
+
+    function hideOverlay() {
+      overlay.className = 'overlay';
+    }
+
+    function showJoinForm() {
+      joinSection.style.display = 'block';
+      gameSection.style.display = 'none';
+      resetBtn.style.display = 'none';
+      setStatus('Sin unir', '');
+      codeBadge.textContent = 'Código: —';
+    }
+
+    function showGame() {
+      joinSection.style.display = 'none';
+      gameSection.style.display = 'grid';
+      resetBtn.style.display = 'inline-flex';
+    }
+
+    async function joinGame(code, name) {
+      try {
+        joinHint.textContent = 'Conectando...';
+        const res = await fetch('/api/games/join', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code, player_name: name }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.detail || 'No se pudo unir');
+        }
+        const data = await res.json();
+        storage.set({ gameId: data.game_id, playerToken: data.player_token, playerName: name, code: data.code });
+        codeBadge.textContent = `Código: ${data.code}`;
+        setStatus(`Jugador: ${name}`, 'var(--panel-strong)');
+        startPolling();
+        showGame();
+        joinHint.textContent = '';
+      } catch (e) {
+        joinHint.textContent = e.message;
+      }
+    }
+
+    joinForm?.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const code = document.getElementById('codeInput').value.trim().toUpperCase();
+      const name = document.getElementById('nameInput').value.trim();
+      if (!code || !name) return;
+      joinGame(code, name);
+    });
+
+    resetBtn.addEventListener('click', () => {
+      const { gameId, playerToken } = storage.get();
+      if (gameId && playerToken) {
+        fetch(`/api/games/${gameId}/leave?player_token=${encodeURIComponent(playerToken)}`, { method: 'POST' }).catch(() => {});
+      }
+      storage.clear();
+      lastState = null;
+      currentQuestionId = null;
+      freeTextDraft = '';
+      if (pollInterval) clearInterval(pollInterval);
+      showJoinForm();
+      hideOverlay();
+    });
+
+    async function fetchState() {
+      const { gameId, playerToken, playerName, code } = storage.get();
+      if (!gameId || !playerToken) return;
+      try {
+        const res = await fetch(`/api/games/${gameId}/player/state?player_token=${encodeURIComponent(playerToken)}`);
+        if (res.status === 401) {
+          actionHint.textContent = 'Fuiste expulsado o tu sesión expiró. Vuelve a unirte.';
+          storage.clear();
+          showJoinForm();
+          hideOverlay();
+          return;
+        }
+        if (!res.ok) throw new Error('No se pudo actualizar estado');
+        const state = await res.json();
+        lastState = state;
+        codeBadge.textContent = `Código: ${code || '—'}`;
+        setStatus(`Jugador: ${playerName || '—'}`, 'var(--panel-strong)');
+        renderState(state);
+      } catch (e) {
+        actionHint.textContent = e.message;
+        questionCard.style.pointerEvents = 'auto';
+        hideOverlay();
+      }
+    }
+
+    function renderTimer(state) {
+      if (timerInterval) clearInterval(timerInterval);
+      timerInterval = null;
+      timerEndsAt = null;
+      timerTotal = null;
+      if (autoSubmitTimeout) {
+        clearTimeout(autoSubmitTimeout);
+        autoSubmitTimeout = null;
+      }
+
+      const ms = state.answer_time_left_ms ?? 0;
+      if (state.phase === 'answering' && ms > 0) {
+        timerBar.style.display = 'block';
+        timerTotal = state.current_question?.time_limit_seconds
+          ? state.current_question.time_limit_seconds * 1000
+          : ms;
+        timerEndsAt = Date.now() + ms;
+        // Programar autoenvío para preguntas de texto libre un poco antes de que termine
+        if (
+          state.current_question?.type === 'free_text' &&
+          state.alive &&
+          !state.has_answered &&
+          state.can_answer
+        ) {
+          autoSubmitTimeout = setTimeout(() => {
+            if (
+              state.current_question &&
+              autoSubmittedFor !== state.current_question.id &&
+              state.alive &&
+              !state.has_answered
+            ) {
+              autoSubmittedFor = state.current_question.id;
+              submitAnswer(state.current_question.id, null, freeTextInput.value);
+            }
+          }, Math.max(0, ms - 100));
+        }
+        const update = () => {
+          const remaining = Math.max(0, timerEndsAt - Date.now());
+          const pct = Math.max(0, Math.min(100, (remaining / timerTotal) * 100));
+          timerFill.style.width = pct + '%';
+          if (
+            remaining <= 0 &&
+            timerInterval &&
+            state.current_question?.type === 'free_text' &&
+            state.alive &&
+            !state.has_answered &&
+            autoSubmittedFor !== state.current_question.id
+          ) {
+            autoSubmittedFor = state.current_question.id;
+            submitAnswer(state.current_question.id, null, freeTextInput.value);
+            clearInterval(timerInterval);
+          }
+          if (remaining <= 0 && timerInterval) clearInterval(timerInterval);
+        };
+        update();
+        timerInterval = setInterval(update, 150);
+      } else {
+        timerBar.style.display = 'none';
+      }
+    }
+
+    function renderState(state) {
+      phaseBadge.textContent = state.phase.toUpperCase();
+      scoreBadge.textContent = `Puntos: ${Math.round(state.score)}`;
+      const aliveText = state.status === 'cashed_out'
+        ? 'Plantado'
+        : state.alive
+        ? 'Sigues en juego'
+        : 'Eliminado';
+      aliveBadge.textContent = `Estado: ${aliveText}`;
+      aliveBadge.className = 'badge ' + (state.status === 'cashed_out' ? 'success' : state.alive ? 'success' : 'danger');
+
+      answerBadge.textContent = state.has_answered ? 'Respuesta enviada' : 'Sin responder';
+      answerBadge.className = 'badge ' + (state.has_answered ? 'success' : '');
+
+      renderTimer(state);
+
+      const isCashOut = state.status === 'cashed_out';
+      const cashoutKeepOpen = state.can_cashout_keep && state.status === 'alive';
+      const cashoutBoostOpen = state.can_cashout_boost && state.status === 'alive';
+      const cashoutWindowOpen = (cashoutKeepOpen || cashoutBoostOpen) && state.status === 'alive';
+
+      if (!state.current_question || cashoutWindowOpen) {
+        questionTitle.textContent = cashoutWindowOpen ? '¿Te plantas?' : 'Esperando pregunta...';
+        questionText.textContent = cashoutWindowOpen
+          ? 'Plantarse está abierto. Elige si mantienes o x1.5 tus puntos.'
+          : 'El presentador aún no ha abierto la ronda.';
+        optionsContainer.innerHTML = '';
+        questionImage.style.display = 'none';
+        freeTextContainer.style.display = 'none';
+        jokerBtn.disabled = true;
+        questionCard.style.pointerEvents = 'auto';
+        if (cashoutWindowOpen) {
+          hideOverlay();
+          actionHint.textContent = 'Plantarse disponible. Selecciona mantener o x1.5.';
+        } else {
+          hideOverlay();
+        }
+        return;
+      }
+
+      const q = state.current_question;
+      const isNewQuestion = q.id !== currentQuestionId;
+      if (isNewQuestion) {
+        currentQuestionId = q.id;
+        freeTextDraft = '';
+        autoSubmittedFor = null;
+      }
+      questionTitle.textContent = `Pregunta ${q.order}`;
+      questionText.textContent = q.text;
+      if (q.image) {
+        questionImage.src = q.image;
+        questionImage.alt = q.text;
+        questionImage.style.display = 'block';
+      } else {
+        questionImage.style.display = 'none';
+      }
+
+      const canAnswerNow = state.can_answer && !state.has_answered && state.alive && !isCashOut && !cashoutWindowOpen;
+      const canUseJoker = state.can_answer && state.joker_available && !state.has_answered && state.alive && !isCashOut && !cashoutWindowOpen;
+      jokerBtn.disabled = !canUseJoker;
+      cashoutKeepBtn.style.display = 'inline-flex';
+      cashoutBoostBtn.style.display = 'inline-flex';
+      cashoutKeepBtn.disabled = false;
+      cashoutBoostBtn.disabled = false;
+
+      if (q.type === 'single_choice' && q.options) {
+        freeTextContainer.style.display = 'none';
+        optionsContainer.innerHTML = '';
+        q.options.forEach(opt => {
+          const card = document.createElement('button');
+          card.type = 'button';
+          card.className = 'option-card';
+          card.disabled = !canAnswerNow;
+          card.innerHTML = `
+            ${opt.image ? `<img src="${opt.image}" alt="${opt.text || opt.id}">` : ''}
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+              <div>
+                <strong>${(opt.text || '').replace(/</g,'&lt;')}</strong>
+                <div class="hint">Opción ${opt.id.toUpperCase()}</div>
+              </div>
+              <span class="badge">${opt.id.toUpperCase()}</span>
+            </div>
+          `;
+          card.addEventListener('click', () => submitAnswer(q.id, opt.id, null));
+          optionsContainer.appendChild(card);
+        });
+      } else {
+        optionsContainer.innerHTML = '';
+        freeTextContainer.style.display = 'flex';
+        if (isNewQuestion) {
+          freeTextInput.value = '';
+          freeTextDraft = '';
+        } else if (freeTextDraft !== undefined && freeTextInput.value !== freeTextDraft) {
+          freeTextInput.value = freeTextDraft;
+        }
+        freeTextInput.disabled = !canAnswerNow;
+        sendTextBtn.disabled = !canAnswerNow;
+        sendTextBtn.onclick = () => submitAnswer(q.id, null, freeTextInput.value);
+      }
+
+      if (!state.can_answer) {
+        actionHint.textContent = 'Ventana cerrada. Espera la siguiente pregunta.';
+      } else if (state.has_answered) {
+        actionHint.textContent = 'Respuesta enviada. Espera resultados.';
+      } else {
+        actionHint.textContent = 'Pregunta abierta. Elige opción o usa tu comodín.';
+      }
+
+      if (state.status === 'cashed_out') {
+        questionCard.style.pointerEvents = 'none';
+        showOverlay('success', 'Te has plantado', `Puntos finales: ${Math.round(state.score)}`);
+      } else if (!state.alive) {
+        questionCard.style.pointerEvents = 'none';
+        showOverlay('danger', 'Respuesta incorrecta', `Has sido eliminado. Puntos: ${Math.round(state.score)}`);
+      } else if (state.phase === 'answering' && state.has_answered) {
+        questionCard.style.pointerEvents = 'none';
+        showOverlay('info', 'Respuesta enviada', 'Espera a que acabe el tiempo');
+      } else if (state.phase === 'results') {
+        questionCard.style.pointerEvents = 'none';
+        if (state.alive) {
+          const msg =
+            state.last_answer_correct === true
+              ? 'Has acertado'
+              : state.last_answer_correct === null || state.last_answer_correct === undefined
+              ? 'Comodín usado, sigues vivo'
+              : 'Sigues vivo';
+          showOverlay('success', '¡Sigues en juego!', msg);
+        } else {
+          showOverlay('danger', 'Respuesta incorrecta', `Has sido eliminado. Puntos: ${Math.round(state.score)}`);
+        }
+      } else {
+        questionCard.style.pointerEvents = 'auto';
+        hideOverlay();
+      }
+    }
+
+    async function submitAnswer(questionId, optionId, text) {
+      const { gameId, playerToken } = storage.get();
+      if (!gameId || !playerToken) return;
+      try {
+        const res = await fetch(`/api/games/${gameId}/answer`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            player_token: playerToken,
+            question_id: questionId,
+            selected_option_id: optionId,
+            text_answer: text,
+          }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.detail || 'No se pudo enviar la respuesta');
+        }
+        freeTextDraft = '';
+        fetchState();
+      } catch (e) {
+        actionHint.textContent = e.message;
+      }
+    }
+
+    async function useJoker() {
+      const { gameId, playerToken } = storage.get();
+      if (!gameId || !playerToken || !lastState?.current_question) return;
+      try {
+        const res = await fetch(`/api/games/${gameId}/joker`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            player_token: playerToken,
+            question_id: lastState.current_question.id,
+          }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.detail || 'No se pudo usar el comodín');
+        }
+        fetchState();
+      } catch (e) {
+        actionHint.textContent = e.message;
+      }
+    }
+
+    jokerBtn.addEventListener('click', useJoker);
+    cashoutKeepBtn.addEventListener('click', () => cashOut(1, lastState));
+    cashoutBoostBtn.addEventListener('click', () => cashOut(1.5, lastState));
+    freeTextInput.addEventListener('input', (e) => {
+      freeTextDraft = e.target.value;
+    });
+
+    async function cashOut(multiplier, state) {
+      const { gameId, playerToken } = storage.get();
+      if (!gameId || !playerToken) return;
+      const canKeep = state?.can_cashout_keep && state?.status === 'alive';
+      const canBoost = state?.can_cashout_boost && state?.status === 'alive';
+      if ((multiplier === 1 && !canKeep) || (multiplier > 1 && !canBoost)) {
+        actionHint.textContent = 'No puedes plantarte en este momento';
+        return;
+      }
+      try {
+        const res = await fetch(`/api/games/${gameId}/cashout`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ player_token: playerToken, multiplier }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.detail || 'No se pudo plantar');
+        }
+        await fetchState();
+      } catch (e) {
+        actionHint.textContent = e.message;
+      }
+    }
+
+    function startPolling() {
+      if (pollInterval) clearInterval(pollInterval);
+      fetchState();
+      pollInterval = setInterval(fetchState, 900);
+    }
+
+    // Refrescar al volver al foco (por ejemplo, cuando el presentador abre plantarse)
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) {
+        fetchState();
+      }
+    });
+
+    // Auto-rejoin if data exists
+    const saved = storage.get();
+    if (saved.gameId && saved.playerToken) {
+      codeBadge.textContent = `Código: ${saved.code || '—'}`;
+      setStatus(`Jugador: ${saved.playerName || '—'}`, 'var(--panel-strong)');
+      showGame();
+      startPolling();
+    } else {
+      if (initialCodeParam) {
+        document.getElementById('codeInput').value = initialCodeParam;
+      }
+      showJoinForm();
+    }
+  </script>
+</body>
+</html>

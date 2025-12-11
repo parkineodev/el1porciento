@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 140" role="img" aria-label="Estaciones">
+  <rect width="200" height="140" fill="#0b172a"/>
+  <text x="100" y="26" fill="#e5e7eb" font-family="Arial, sans-serif" font-size="16" text-anchor="middle">Después de primavera viene...</text>
+  <circle cx="50" cy="80" r="18" fill="#22d3ee"/>
+  <circle cx="100" cy="80" r="18" fill="#facc15"/>
+  <circle cx="150" cy="80" r="18" fill="#ef4444"/>
+  <text x="50" y="86" text-anchor="middle" fill="#0b172a" font-size="12">❄</text>
+  <text x="100" y="86" text-anchor="middle" fill="#0b172a" font-size="12">☀</text>
+  <text x="150" y="86" text-anchor="middle" fill="#0b172a" font-size="12">🍂</text>
+</svg>

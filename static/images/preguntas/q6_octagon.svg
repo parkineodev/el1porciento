@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 140" role="img" aria-label="Octágono">
+  <rect width="200" height="140" fill="#0b172a"/>
+  <polygon points="100,20 150,45 170,95 140,130 60,130 30,95 50,45" fill="#22d3ee" stroke="#38bdf8" stroke-width="6"/>
+  <text x="100" y="80" text-anchor="middle" fill="#0b172a" font-family="Arial, sans-serif" font-size="28" font-weight="bold">8?</text>
+</svg>
