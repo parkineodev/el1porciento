@@ -6,6 +6,13 @@ Backend ligero para jugar con amigos al estilo del programa **“El 1%”**. Usa
 
 Esta app la he desplegado en `https://el1porciento.onrender.com`con la cuenta de parkineo.dev@gmail.com y en teoría se queda muerto el container que lo corre hasta que lo visitas otra vez que despierta. Es gratis mantenerlo y cuando subes commits se actualiza.
 
+# ¿Cómo jugar?
+
+Se crean las preguntas en el yaml y luego:
+- https://el1porciento.onrender.com/presenter para crear la sala y manejar el juego
+- https://el1porciento.onrender.com/screen para enseñar a los jugadores en tiempo real las preguntas y el recuento
+- https://el1porciento.onrender.com/ para unirse a una sala como jugador y jugar
+
 ## Requisitos
 
 - Ubuntu / Debian (o similar)
