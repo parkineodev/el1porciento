@@ -2,6 +2,10 @@
 
 Backend ligero para jugar con amigos al estilo del programa **“El 1%”**. Usa FastAPI, guarda preguntas en YAML y el estado de las partidas en ficheros JSON (sin base de datos).
 
+# Despliegue
+
+Esta app la he desplegado en `https://el1porciento.onrender.com`con la cuenta de parkineo.dev@gmail.com y en teoría se queda muerto el container que lo corre hasta que lo visitas otra vez que despierta. Es gratis mantenerlo y cuando subes commits se actualiza.
+
 ## Requisitos
 
 - Ubuntu / Debian (o similar)
