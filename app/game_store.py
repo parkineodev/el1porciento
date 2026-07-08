@@ -6,11 +6,32 @@ import string
 import threading
 import time
 from typing import Dict, Optional, Tuple
+from urllib.parse import unquote, urlparse
 
 from fastapi import HTTPException
 from fastapi.encoders import jsonable_encoder
+from psycopg.conninfo import make_conninfo
 from psycopg.types.json import Jsonb
 from psycopg_pool import ConnectionPool
+
+
+def _build_conninfo(database_url: str) -> str:
+    """Convierte la URL de conexión en un conninfo con el puerto ya como
+    entero de Python. Si se deja el puerto dentro de la URL (p. ej.
+    ":6543"), en contenedores mínimos como los de Render (sin /etc/services
+    completo) getaddrinfo() puede intentar resolverlo como nombre de
+    servicio en vez de número y fallar con "Servname not supported for
+    ai_socktype" -- pasarlo ya parseado como int evita esa ruta de código.
+    """
+    parsed = urlparse(database_url)
+
+    return make_conninfo(
+        dbname=(parsed.path or "/postgres").lstrip("/") or "postgres",
+        host=parsed.hostname,
+        password=unquote(parsed.password) if parsed.password else None,
+        port=parsed.port or 5432,
+        user=unquote(parsed.username) if parsed.username else None,
+    )
 
 from .models import (
     AnswerRecord,
@@ -60,7 +81,7 @@ class GameStore:
                 "DATABASE_URL no está configurada (cadena de conexión a Postgres/Supabase)"
             )
         self._pool = ConnectionPool(
-            database_url, min_size=1, max_size=5, kwargs={"autocommit": True}
+            _build_conninfo(database_url), min_size=1, max_size=5, kwargs={"autocommit": True}
         )
         self._games: Dict[str, GameSession] = {}
         self._code_index: Dict[str, str] = {}
