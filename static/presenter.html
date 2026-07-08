@@ -156,8 +156,12 @@
     const cashoutStatusBoost = document.getElementById('cashoutStatusBoost');
     const intermissionBtn = document.getElementById('intermissionBtn');
 
-    let gameId = localStorage.getItem('presenter_game_id') || '';
-    let presenterToken = localStorage.getItem('presenter_token') || '';
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlGameId = urlParams.get('game_id');
+    const urlPresenterToken = urlParams.get('presenter_token');
+
+    let gameId = urlGameId || localStorage.getItem('presenter_game_id') || '';
+    let presenterToken = urlPresenterToken || localStorage.getItem('presenter_token') || '';
     let presenterName = localStorage.getItem('presenter_name') || '';
     let questions = [];
     let poll = null;
@@ -409,6 +413,9 @@
       gameIdInput.value = gameId;
       presenterTokenInput.value = presenterToken;
       presenterNameInput.value = presenterName;
+      if (urlGameId && urlPresenterToken) {
+        persist();
+      }
       startPolling();
     }
   </script>

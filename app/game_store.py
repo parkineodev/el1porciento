@@ -5,7 +5,7 @@ import secrets
 import string
 import threading
 import time
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 from urllib.parse import unquote, urlparse
 
 from fastapi import HTTPException
@@ -42,6 +42,7 @@ from .models import (
     Question,
     QuestionResult,
     QuestionType,
+    RosterEntry,
 )
 
 
@@ -152,7 +153,9 @@ class GameStore:
             return None
         return self._adopt_or_cache(self._hydrate(row[0]))
 
-    def create_game(self, presenter_name: str) -> GameSession:
+    def create_game(
+        self, presenter_name: str, roster: Optional[List[RosterEntry]] = None
+    ) -> GameSession:
         game_id = _generate_id("game")
         code = _generate_code()
         presenter_id = _generate_id("host")
@@ -164,9 +167,14 @@ class GameStore:
             presenter_id=presenter_id,
             presenter_name=presenter_name,
             presenter_token=presenter_token,
+            roster=roster or [],
         )
         self._save(game)
         return game
+
+    def get_roster_by_code(self, code: str) -> List[RosterEntry]:
+        game = self.get_game_by_code(code)
+        return game.roster
 
     def get_game(self, game_id: str) -> GameSession:
         game = self._games.get(game_id) or self._load_from_db(game_id)

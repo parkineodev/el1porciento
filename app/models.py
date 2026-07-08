@@ -185,6 +185,16 @@ class QuestionResult(BaseModel):
     players_correct_names: List[str] = Field(default_factory=list)
 
 
+class RosterEntry(BaseModel):
+    """Un jugador inscrito que puede elegirse al unirse, en vez de escribir
+    el nombre a mano. Lo manda quien crea la partida (p. ej. la web de la
+    boda), con el id que use ese sistema externo para referirse a esa
+    persona -- se guarda tal cual como external_ref al unirse."""
+
+    id: str
+    name: str
+
+
 class GameSession(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -207,6 +217,7 @@ class GameSession(BaseModel):
     players: Dict[str, Player] = Field(default_factory=dict)
     answers: Dict[str, Dict[str, AnswerRecord]] = Field(default_factory=dict)
     question_results: Dict[str, QuestionResult] = Field(default_factory=dict)
+    roster: List[RosterEntry] = Field(default_factory=list)
 
     def alive_players(self) -> List[Player]:
         return [p for p in self.players.values() if p.status == PlayerStatus.ALIVE]

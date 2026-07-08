@@ -20,6 +20,7 @@ from .models import (
     QuestionPublic,
     QuestionResult,
     QuestionType,
+    RosterEntry,
 )
 from .question_store import QuestionStore
 
@@ -52,6 +53,7 @@ if STATIC_DIR.exists():
 
 class CreateGameRequest(BaseModel):
     presenter_name: str = Field(..., min_length=1)
+    roster: Optional[list[RosterEntry]] = None
 
 
 class NextQuestionRequest(BaseModel):
@@ -145,7 +147,7 @@ def get_next_question(question_id: str, include_correct: bool = Query(False)) ->
 
 @app.post("/api/games")
 def create_game(payload: CreateGameRequest) -> dict:
-    game = game_store.create_game(payload.presenter_name)
+    game = game_store.create_game(payload.presenter_name, roster=payload.roster)
     return {
         "game_id": game.id,
         "code": game.code,
@@ -154,6 +156,11 @@ def create_game(payload: CreateGameRequest) -> dict:
         "phase": game.phase,
         "question_count": len(question_store.all_questions()),
     }
+
+
+@app.get("/api/games/by-code/{code}/roster")
+def roster_by_code(code: str) -> list[RosterEntry]:
+    return game_store.get_roster_by_code(code.upper())
 
 
 def _require_presenter_token(game: GameSession, presenter_token: str) -> None:

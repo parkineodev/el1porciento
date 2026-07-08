@@ -45,6 +45,11 @@
         <input id="nameInput" class="input" placeholder="Tu nombre" minlength="2" required>
         <button type="submit" class="btn">Unirme</button>
       </form>
+      <div id="rosterSection" style="display:none;">
+        <p class="hint">Elige tu nombre de la lista:</p>
+        <input id="rosterSearchInput" class="input" placeholder="Busca tu nombre...">
+        <div id="rosterList" style="max-height:260px; overflow-y:auto; display:grid; gap:8px; margin-top:10px;"></div>
+      </div>
       <p class="hint" id="joinHint"></p>
     </section>
 
@@ -118,6 +123,11 @@
     const questionCard = document.getElementById('questionCard');
     const cashoutKeepBtn = document.getElementById('cashoutKeepBtn');
     const cashoutBoostBtn = document.getElementById('cashoutBoostBtn');
+    const codeInput = document.getElementById('codeInput');
+    const nameInput = document.getElementById('nameInput');
+    const rosterSection = document.getElementById('rosterSection');
+    const rosterSearchInput = document.getElementById('rosterSearchInput');
+    const rosterList = document.getElementById('rosterList');
 
     const urlParams = new URLSearchParams(window.location.search);
     const initialCodeParam = (urlParams.get('code') || '').toUpperCase();
@@ -210,8 +220,73 @@
       }
     }
 
+    let currentRoster = [];
+
+    function setRosterMode(enabled) {
+      rosterSection.style.display = enabled ? 'block' : 'none';
+      nameInput.style.display = enabled ? 'none' : '';
+      nameInput.required = !enabled;
+    }
+
+    function renderRosterList(query) {
+      const normalized = query.trim().toLowerCase();
+      const filtered = currentRoster.filter((entry) => entry.name.toLowerCase().includes(normalized));
+      rosterList.innerHTML = '';
+      if (filtered.length === 0) {
+        rosterList.innerHTML = '<p class="hint">Nadie coincide con esa búsqueda.</p>';
+        return;
+      }
+      filtered.forEach((entry) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'btn secondary';
+        btn.style.width = '100%';
+        btn.style.textAlign = 'left';
+        btn.textContent = entry.name;
+        btn.addEventListener('click', () => {
+          const code = codeInput.value.trim().toUpperCase();
+          joinGame(code, entry.name, entry.id);
+        });
+        rosterList.appendChild(btn);
+      });
+    }
+
+    async function fetchRosterForCode(code) {
+      if (!code || code.length < 3) {
+        setRosterMode(false);
+        return;
+      }
+      try {
+        const res = await fetch(`/api/games/by-code/${encodeURIComponent(code)}/roster`);
+        if (!res.ok) {
+          setRosterMode(false);
+          return;
+        }
+        const roster = await res.json();
+        if (Array.isArray(roster) && roster.length > 0) {
+          currentRoster = roster;
+          setRosterMode(true);
+          renderRosterList('');
+        } else {
+          setRosterMode(false);
+        }
+      } catch (_) {
+        setRosterMode(false);
+      }
+    }
+
+    rosterSearchInput?.addEventListener('input', (e) => renderRosterList(e.target.value));
+
+    let rosterFetchTimeout = null;
+    codeInput?.addEventListener('input', (e) => {
+      const code = e.target.value.trim().toUpperCase();
+      if (rosterFetchTimeout) clearTimeout(rosterFetchTimeout);
+      rosterFetchTimeout = setTimeout(() => fetchRosterForCode(code), 400);
+    });
+
     joinForm?.addEventListener('submit', (e) => {
       e.preventDefault();
+      if (rosterSection.style.display === 'block') return; // se une pulsando su nombre en la lista
       const code = document.getElementById('codeInput').value.trim().toUpperCase();
       const name = document.getElementById('nameInput').value.trim();
       if (!code || !name) return;
@@ -562,6 +637,7 @@
     } else {
       if (initialCodeParam) {
         document.getElementById('codeInput').value = initialCodeParam;
+        fetchRosterForCode(initialCodeParam);
       }
       showJoinForm();
     }

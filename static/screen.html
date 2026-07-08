@@ -85,7 +85,8 @@
     const joinLink = document.getElementById('joinLink');
     let qr;
 
-    let gameId = localStorage.getItem('screen_game_id') || '';
+    const urlGameId = new URLSearchParams(window.location.search).get('game_id');
+    let gameId = urlGameId || localStorage.getItem('screen_game_id') || '';
     let poll = null;
     let timerInterval = null;
     let timerEndsAt = null;
@@ -262,6 +263,9 @@
 
     if (gameId) {
       setGameId(gameId);
+      if (urlGameId) {
+        localStorage.setItem('screen_game_id', gameId);
+      }
     }
   </script>
 </body>
