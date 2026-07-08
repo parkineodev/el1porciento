@@ -26,15 +26,14 @@ from .question_store import QuestionStore
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 QUESTIONS_PATH = DATA_DIR / "questions.yaml"
-GAMES_DIR = DATA_DIR / "games"
 STATIC_DIR = BASE_DIR.parent / "static"
 
 question_store = QuestionStore(QUESTIONS_PATH)
-game_store = GameStore(GAMES_DIR)
+game_store = GameStore()
 
 app = FastAPI(
     title="El 1% - Backend",
-    description="API para partidas tipo \"El 1%\" con preguntas en YAML y partidas en JSON.",
+    description="API para partidas tipo \"El 1%\" con preguntas en YAML y partidas en Postgres.",
     version="0.1.0",
 )
 
@@ -78,6 +77,7 @@ class FinishGameRequest(BaseModel):
 class JoinGameRequest(BaseModel):
     code: str
     player_name: str
+    external_ref: Optional[str] = None
 
 
 class SubmitAnswerRequest(BaseModel):
@@ -181,6 +181,7 @@ def presenter_state(game_id: str, presenter_token: str = Query(...)) -> dict:
             score=p.score,
             last_answer=p.last_answer,
             last_answer_correct=p.last_answer_correct,
+            external_ref=p.external_ref,
         )
         for p in game.players.values()
     ]
@@ -328,7 +329,9 @@ def finish_game(game_id: str, payload: FinishGameRequest) -> dict:
 
 @app.post("/api/games/join")
 def join_game(payload: JoinGameRequest) -> dict:
-    game, player, player_token = game_store.join_game(payload.code.upper(), payload.player_name)
+    game, player, player_token = game_store.join_game(
+        payload.code.upper(), payload.player_name, external_ref=payload.external_ref
+    )
     return {
         "game_id": game.id,
         "player_id": player.id,

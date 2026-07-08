@@ -117,6 +117,9 @@ class Player(BaseModel):
     cashed_out_multiplier: Optional[float] = None
     last_answer: Optional[str] = None
     last_answer_correct: Optional[bool] = None
+    # Identificador del jugador en el sistema que lo invitó (p. ej. la web de
+    # la boda), para poder atribuirle los puntos sin depender de su nombre.
+    external_ref: Optional[str] = None
 
 
 class PlayerForPresenter(BaseModel):
@@ -128,6 +131,7 @@ class PlayerForPresenter(BaseModel):
     score: float
     last_answer: Optional[str]
     last_answer_correct: Optional[bool]
+    external_ref: Optional[str] = None
 
 
 class PlayerForScreen(BaseModel):

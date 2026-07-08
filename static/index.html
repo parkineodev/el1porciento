@@ -121,6 +121,8 @@
 
     const urlParams = new URLSearchParams(window.location.search);
     const initialCodeParam = (urlParams.get('code') || '').toUpperCase();
+    const initialNameParam = urlParams.get('name') || '';
+    const initialRefParam = urlParams.get('ref') || '';
 
     const storage = {
       get() {
@@ -184,13 +186,13 @@
       resetBtn.style.display = 'inline-flex';
     }
 
-    async function joinGame(code, name) {
+    async function joinGame(code, name, externalRef) {
       try {
         joinHint.textContent = 'Conectando...';
         const res = await fetch('/api/games/join', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ code, player_name: name }),
+          body: JSON.stringify({ code, player_name: name, external_ref: externalRef || undefined }),
         });
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
@@ -551,6 +553,12 @@
       setStatus(`Jugador: ${saved.playerName || '—'}`, 'var(--panel-strong)');
       showGame();
       startPolling();
+    } else if (initialCodeParam && initialNameParam && initialRefParam) {
+      // Enlace directo desde el hub de la competición: entra automáticamente
+      // sin que el invitado tenga que teclear nada.
+      document.getElementById('codeInput').value = initialCodeParam;
+      document.getElementById('nameInput').value = initialNameParam;
+      joinGame(initialCodeParam, initialNameParam, initialRefParam);
     } else {
       if (initialCodeParam) {
         document.getElementById('codeInput').value = initialCodeParam;
