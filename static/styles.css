@@ -351,21 +351,28 @@ header {
 }
 
 .stat-big {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 56vh;
   text-align: center;
-  padding: 18px 0;
+  padding: 24px 0;
 }
 
 .stat-big .stat-big-number {
-  font-size: 72px;
-  font-weight: 700;
+  font-size: clamp(140px, 38vw, 440px);
+  font-weight: 800;
   line-height: 1;
   color: #ef4444;
 }
 
 .stat-big .stat-big-label {
   color: var(--muted);
-  font-size: 16px;
-  margin-top: 6px;
+  font-size: clamp(18px, 3vw, 30px);
+  margin-top: 16px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .overlay.success .icon {
