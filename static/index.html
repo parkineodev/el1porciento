@@ -6,10 +6,11 @@
   <title>El 1% · Jugador</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/styles.css">
+  <link rel="stylesheet" href="/static/theme-1porciento.css">
 </head>
-<body>
+<body class="theme-1p">
   <div id="overlay" class="overlay">
     <div class="overlay-content" id="overlayContent">
       <span class="icon" id="overlayIcon">✔</span>
@@ -53,20 +54,21 @@
     </section>
 
     <section id="gameSection" class="grid two" style="display:none;">
-      <div class="card question" id="questionCard">
-        <div class="section-title">
-          <h2 id="questionTitle">Esperando pregunta…</h2>
-          <div class="flex" style="gap:8px;">
-            <button id="jokerBtn" class="btn secondary" style="padding:8px 12px;">Usar comodín</button>
-            <span class="badge" id="phaseBadge">LOBBY</span>
+      <div class="question-stage" id="questionCard">
+        <div class="stage-top">
+          <div class="timer-medal" style="display:none;" id="timerBar">
+            <div class="timer-fill" id="timerFill"></div>
+            <div class="timer-medal-label"><span>1%</span></div>
           </div>
+          <button id="jokerBtn" class="btn secondary" style="padding:8px 12px;">Usar comodín</button>
+          <span class="badge" id="phaseBadge">LOBBY</span>
         </div>
-        <div class="timer-bar" style="display:none;" id="timerBar">
-          <div class="timer-fill" id="timerFill"></div>
+        <div class="panel question-panel">
+          <h2 id="questionTitle" class="question-label">Esperando pregunta…</h2>
+          <p id="questionText" class="hint">El presentador abrirá la siguiente pregunta.</p>
+          <p id="usualCorrectHint" class="hint" style="display:none;"></p>
         </div>
         <img id="questionImage" class="question-image-large" alt="" style="display:none;">
-        <p id="questionText" class="hint">El presentador abrirá la siguiente pregunta.</p>
-        <p id="usualCorrectHint" class="hint" style="display:none;"></p>
         <div id="optionsContainer" class="options-grid tight"></div>
         <div id="freeTextContainer" style="display:none; gap:10px;" class="form-row">
           <input id="freeTextInput" class="input" placeholder="Escribe tu respuesta">
@@ -186,6 +188,7 @@
     }
 
     function showJoinForm() {
+      delete document.body.dataset.phase;
       joinSection.style.display = 'block';
       gameSection.style.display = 'none';
       resetBtn.style.display = 'none';
@@ -382,6 +385,7 @@
           const remaining = Math.max(0, timerEndsAt - Date.now());
           const pct = Math.max(0, Math.min(100, (remaining / timerTotal) * 100));
           timerFill.style.width = pct + '%';
+          timerBar.style.setProperty('--pct', pct);
           if (
             remaining <= 0 &&
             timerInterval &&
@@ -404,6 +408,7 @@
     }
 
     function renderState(state) {
+      document.body.dataset.phase = state.phase;
       phaseBadge.textContent = state.phase.toUpperCase();
       scoreBadge.textContent = `Puntos: ${Math.round(state.score)}`;
       const aliveText = state.status === 'cashed_out'
@@ -516,16 +521,12 @@
           const card = document.createElement('button');
           card.type = 'button';
           card.className = 'option-card';
+          if (state.has_answered && state.last_answer === opt.id) card.classList.add('selected');
           card.disabled = !canAnswerNow;
           card.innerHTML = `
+            <span class="opt-letter">${opt.id.toUpperCase()}</span>
             ${opt.image ? `<img src="${ImagePreloader.src(opt.image)}" alt="${opt.text || opt.id}">` : ''}
-            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
-              <div>
-                <strong>${(opt.text || '').replace(/</g,'&lt;')}</strong>
-                <div class="hint">Opción ${opt.id.toUpperCase()}</div>
-              </div>
-              <span class="badge">${opt.id.toUpperCase()}</span>
-            </div>
+            ${opt.text ? `<span class="opt-text">${opt.text.replace(/</g,'&lt;')}</span>` : ''}
           `;
           card.addEventListener('click', () => submitAnswer(q.id, opt.id, null));
           optionsContainer.appendChild(card);

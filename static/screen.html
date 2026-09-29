@@ -6,12 +6,13 @@
   <title>El 1% · Pantalla grande</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/styles.css">
+  <link rel="stylesheet" href="/static/theme-1porciento.css">
   <script src="https://cdn.jsdelivr.net/npm/qrious@4.0.2/dist/qrious.min.js"></script>
   <script src="/static/image-preload.js"></script>
 </head>
-<body>
+<body class="theme-1p screen">
   <header>
     <div class="flex">
       <h1>El 1% · Pantalla grande</h1>
@@ -24,16 +25,18 @@
   </header>
 
   <main class="layout">
-    <section class="card">
-      <div class="section-title">
-        <h2>Selecciona partida</h2>
-        <button class="btn secondary" id="saveGameBtn">Guardar</button>
+    <section class="card" id="setupCard">
+      <div id="setupForm">
+        <div class="section-title">
+          <h2>Selecciona partida</h2>
+          <button class="btn secondary" id="saveGameBtn">Guardar</button>
+        </div>
+        <div class="form-row">
+          <input id="gameIdInput" class="input" placeholder="Game ID (lo da el presentador)">
+          <button class="btn" id="loadGameBtn">Cargar</button>
+        </div>
+        <p class="hint">Pega el Game ID que aparece en la consola del presentador. El código para jugadores se mostrará automáticamente.</p>
       </div>
-      <div class="form-row">
-        <input id="gameIdInput" class="input" placeholder="Game ID (lo da el presentador)">
-        <button class="btn" id="loadGameBtn">Cargar</button>
-      </div>
-      <p class="hint">Pega el Game ID que aparece en la consola del presentador. El código para jugadores se mostrará automáticamente.</p>
       <div class="grid two" style="align-items:center;">
         <div>
           <p class="hint">Enlace para jugadores:</p>
@@ -45,17 +48,18 @@
       </div>
     </section>
 
-    <section class="card">
-      <div class="section-title">
+    <section class="stage">
+      <div class="panel question-panel">
         <h2 id="questionTitle">Esperando...</h2>
-        <span class="badge timer-big" id="timeBadge">—</span>
+        <p id="questionText" class="hint">Cuando el presentador abra una pregunta, aparecerá aquí.</p>
       </div>
-      <div class="timer-bar timer-bar-big" id="timerBar" style="display:none;">
-        <div class="timer-fill" id="timerFill"></div>
-      </div>
-      <p id="questionText" class="hint">Cuando el presentador abra una pregunta, aparecerá aquí.</p>
       <img id="questionImage" class="question-image-large" style="display:none;" alt="">
       <div id="optionsContainer" class="options-grid"></div>
+      <span class="badge timer-big" id="timeBadge">—</span>
+      <div class="timer-medal" id="timerBar" style="display:none;">
+        <div class="timer-fill" id="timerFill"></div>
+        <div class="timer-medal-label"><span>1%</span></div>
+      </div>
     </section>
 
     <section class="card" id="resultsCard" style="display:none;">
@@ -98,6 +102,7 @@
       gameIdInput.value = gameId;
       if (poll) clearInterval(poll);
       if (gameId) {
+        document.body.dataset.loaded = '1';
         ImagePreloader.preloadAll();
         fetchState();
         poll = setInterval(fetchState, 1400);
@@ -136,11 +141,13 @@
       const remaining = Math.max(0, timerEndsAt - Date.now());
       const pct = Math.max(0, Math.min(100, (remaining / timerTotal) * 100));
       timerFill.style.width = pct + '%';
+      timerBar.style.setProperty('--pct', pct);
       timeBadge.textContent = `Tiempo: ${(remaining / 1000).toFixed(1)}s`;
       if (remaining <= 0) stopTimer();
     }
 
     function render(state) {
+      document.body.dataset.phase = state.phase;
       phaseBadge.textContent = state.phase.toUpperCase();
       codeBadge.textContent = `Código: ${state.code || '—'}`;
       countsBadge.textContent = `${state.alive_count} vivos · ${state.total_players} jugadores`;
@@ -239,16 +246,12 @@
         q.options.forEach(opt => {
           const card = document.createElement('div');
           card.className = 'option-card';
-          card.style.cursor = 'default';
+          const correctId = state.phase === 'results' ? state.last_result?.correct_option_id : null;
+          if (correctId) card.classList.add(opt.id === correctId ? 'is-correct' : 'is-wrong');
           card.innerHTML = `
+            <span class="opt-letter">${opt.id.toUpperCase()}</span>
             ${opt.image ? `<img src="${ImagePreloader.src(opt.image)}" alt="${opt.text || opt.id}">` : ''}
-            <div style="display:flex;justify-content:space-between;align-items:center;">
-              <div>
-                <strong>${opt.text || ''}</strong>
-                <div class="hint">Opción ${opt.id.toUpperCase()}</div>
-              </div>
-              <span class="badge">${opt.id.toUpperCase()}</span>
-            </div>
+            ${opt.text ? `<span class="opt-text">${opt.text}</span>` : ''}
           `;
           optionsContainer.appendChild(card);
         });
