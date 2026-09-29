@@ -21,6 +21,7 @@ from .models import (
     QuestionResult,
     QuestionType,
     RosterEntry,
+    ScoreSnapshot,
 )
 
 
@@ -189,6 +190,8 @@ class GameStore:
     ) -> Tuple[GameSession, Player, str]:
         game = self.get_game_by_code(code)
         with self._lock_for(game.id):
+            if game.phase == GamePhase.FINISHED:
+                raise HTTPException(status_code=400, detail="La partida ha terminado")
             if external_ref:
                 for existing_id, existing in game.players.items():
                     if existing.external_ref == external_ref:
@@ -355,6 +358,13 @@ class GameStore:
                 players_joker_names=players_joker_names,
                 players_correct_names=players_correct_names,
             )
+            game.score_history = [snap for snap in game.score_history if snap.question_id != question.id]
+            game.score_history.append(
+                ScoreSnapshot(
+                    question_id=question.id,
+                    scores={pid: p.score for pid, p in game.players.items()},
+                )
+            )
             self._save(game)
             return game.question_results[question.id]
 
@@ -451,9 +461,19 @@ class GameStore:
             self._validate_presenter(game, presenter_token)
             game.phase = GamePhase.FINISHED
             game.finished_at = time.time()
-            # Expulsar a todos los jugadores (limpiar tokens)
+            # Se cierran las sesiones de los móviles, pero los jugadores y sus
+            # puntos se conservan para el desglose y el recuento final.
             game.player_tokens.clear()
-            game.players.clear()
+            self._save(game)
+            return game
+
+    def start_recount(self, game_id: str, presenter_token: str) -> GameSession:
+        with self._lock_for(game_id):
+            game = self.get_game(game_id)
+            self._validate_presenter(game, presenter_token)
+            if game.phase != GamePhase.FINISHED:
+                raise HTTPException(status_code=400, detail="Termina la partida antes de hacer el recuento")
+            game.recount_started_at = time.time()
             self._save(game)
             return game
 

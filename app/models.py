@@ -243,6 +243,14 @@ class RosterEntry(BaseModel):
     name: str
 
 
+class ScoreSnapshot(BaseModel):
+    """Puntuación de cada jugador justo después de corregir una pregunta,
+    para poder reproducir el recuento final pregunta a pregunta."""
+
+    question_id: str
+    scores: Dict[str, float] = Field(default_factory=dict)
+
+
 class GameSession(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -266,6 +274,8 @@ class GameSession(BaseModel):
     answers: Dict[str, Dict[str, AnswerRecord]] = Field(default_factory=dict)
     question_results: Dict[str, QuestionResult] = Field(default_factory=dict)
     roster: List[RosterEntry] = Field(default_factory=list)
+    score_history: List[ScoreSnapshot] = Field(default_factory=list)
+    recount_started_at: Optional[float] = None
 
     def alive_players(self) -> List[Player]:
         return [p for p in self.players.values() if p.status == PlayerStatus.ALIVE]

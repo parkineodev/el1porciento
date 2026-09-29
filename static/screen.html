@@ -69,6 +69,24 @@
       </div>
       <div id="resultsBody" class="grid" style="gap:8px;"></div>
     </section>
+
+    <section class="card" id="roundsCard" style="display:none;">
+      <div class="section-title">
+        <h2>Así ha ido la partida</h2>
+      </div>
+      <div id="roundsBody" class="rounds-grid"></div>
+    </section>
+
+    <section class="recount" id="recountView" style="display:none;">
+      <div class="recount-head">
+        <span class="recount-kicker" id="recountKicker">Recuento final</span>
+        <h2 id="recountTitle">Antes de El 1%</h2>
+        <div class="recount-progress"><div id="recountProgress"></div></div>
+      </div>
+      <div class="recount-board" id="recountBoard">
+        <div class="recount-cut" id="recountCut"><span>Clasificados a la fase final ▲</span></div>
+      </div>
+    </section>
   </main>
 
   <script>
@@ -168,6 +186,14 @@
           qr.value = url;
         }
       }
+      if (state.phase === 'finished') {
+        stopTimer();
+        renderFinished(state);
+        return;
+      }
+      roundsCard.style.display = 'none';
+      recountView.style.display = 'none';
+      stopRecount();
       const timeLeft = state.answer_time_left_ms ?? null;
       if (!state.current_question) {
         questionTitle.textContent = 'Esperando pregunta...';
@@ -278,6 +304,168 @@
         resultsCard.style.display = 'none';
         resultsBody.innerHTML = '';
       }
+    }
+
+
+    // ---------- Final de partida: desglose por rondas y recuento ----------
+
+    const roundsCard = document.getElementById('roundsCard');
+    const roundsBody = document.getElementById('roundsBody');
+    const recountView = document.getElementById('recountView');
+    const recountBoard = document.getElementById('recountBoard');
+    const recountCut = document.getElementById('recountCut');
+    const recountTitle = document.getElementById('recountTitle');
+    const recountKicker = document.getElementById('recountKicker');
+    const recountProgress = document.getElementById('recountProgress');
+
+    const RECOUNT_STEP_MS = 4500;
+    const RECOUNT_VISIBLE = 15;
+    let recountStartedAt = null;
+    let recountTimers = [];
+
+    const esc = (value) =>
+      String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+    const fmtPoints = (n) => n.toLocaleString('es-ES', { maximumFractionDigits: 2 });
+
+    function renderFinished(state) {
+      if (!state.recount_started_at) {
+        stopRecount();
+        recountView.style.display = 'none';
+        roundsCard.style.display = 'block';
+        roundsBody.innerHTML = state.rounds.length
+          ? state.rounds
+              .map(
+                (r) => `
+          <div class="round-item">
+            <div class="round-title">Pregunta ${esc(r.order)}</div>
+            <div class="round-line">
+              <span class="round-tag out">Eliminados · ${r.eliminated.length}</span>
+              <span>${r.eliminated.length ? r.eliminated.map(esc).join(', ') : 'Nadie'}</span>
+            </div>
+            ${
+              r.cashed_out.length
+                ? `<div class="round-line">
+              <span class="round-tag cash">Se plantaron · ${r.cashed_out.length}</span>
+              <span>${r.cashed_out.map(esc).join(', ')}</span>
+            </div>`
+                : ''
+            }
+          </div>`,
+              )
+              .join('')
+          : '<p class="hint">No se llegó a corregir ninguna pregunta.</p>';
+        return;
+      }
+
+      roundsCard.style.display = 'none';
+      recountView.style.display = 'flex';
+      if (state.recount_started_at !== recountStartedAt) {
+        recountStartedAt = state.recount_started_at;
+        loadRecount(state.recount_elapsed_ms || 0);
+      }
+    }
+
+    async function loadRecount(elapsedMs) {
+      stopRecount();
+      recountTitle.textContent = 'Preparando el recuento…';
+      try {
+        const res = await fetch(`/api/games/${gameId}/recount`);
+        if (!res.ok) throw new Error('No se pudo cargar el recuento');
+        playRecount(await res.json(), elapsedMs);
+      } catch (e) {
+        recountTitle.textContent = e.message;
+        recountStartedAt = null; // se reintenta en el siguiente sondeo
+      }
+    }
+
+    function stopRecount() {
+      recountTimers.forEach(clearTimeout);
+      recountTimers = [];
+    }
+
+    function rowHeight() {
+      return recountBoard.clientHeight / (RECOUNT_VISIBLE + 0.6);
+    }
+
+    function playRecount(data, elapsedMs) {
+      recountBoard.querySelectorAll('.rc-row').forEach((row) => row.remove());
+      recountView.classList.remove('is-final');
+      const rows = new Map();
+      data.players.forEach((p) => {
+        const row = document.createElement('div');
+        row.className = 'rc-row';
+        row.innerHTML = `
+          <span class="rc-pos"></span>
+          <span class="rc-name">${esc(p.name)}</span>
+          <span class="rc-delta"></span>
+          <span class="rc-points">0</span>`;
+        row.dataset.value = '0';
+        recountBoard.appendChild(row);
+        rows.set(p.id, row);
+      });
+
+      const lastStep = data.steps.length - 1;
+      const firstStep = Math.min(lastStep, Math.floor(elapsedMs / RECOUNT_STEP_MS));
+      showRecountStep(data, rows, firstStep, true);
+      let wait = RECOUNT_STEP_MS - (elapsedMs % RECOUNT_STEP_MS);
+      for (let k = firstStep + 1; k <= lastStep; k++) {
+        recountTimers.push(setTimeout(() => showRecountStep(data, rows, k, false), wait));
+        wait += RECOUNT_STEP_MS;
+      }
+    }
+
+    function showRecountStep(data, rows, k, instant) {
+      const lastStep = data.steps.length - 1;
+      const isFinal = k === lastStep && lastStep > 0;
+      recountKicker.textContent = k === 0 ? 'Recuento final' : `Paso ${k} de ${lastStep}`;
+      recountTitle.textContent = isFinal ? '¡Clasificados para la fase final!' : data.steps[k];
+      recountProgress.style.width = `${lastStep ? (k / lastStep) * 100 : 100}%`;
+
+      const ranked = data.players
+        .slice()
+        .sort((a, b) => b.points[k] - a.points[k] || a.name.localeCompare(b.name, 'es'));
+      const h = rowHeight();
+      const gap = h * 0.6;
+      recountCut.style.transform = `translateY(${data.qualified * h + gap / 2 - 1}px)`;
+
+      ranked.forEach((p, rank) => {
+        const row = rows.get(p.id);
+        const visible = rank < RECOUNT_VISIBLE;
+        const y = (Math.min(rank, RECOUNT_VISIBLE) * h) + (rank >= data.qualified ? gap : 0);
+        row.style.transition = instant ? 'none' : '';
+        row.style.height = `${h - 6}px`;
+        row.style.transform = `translateY(${y}px)`;
+        row.style.opacity = visible ? '1' : '0';
+        row.classList.toggle('qualified', rank < data.qualified);
+        row.querySelector('.rc-pos').textContent = rank + 1;
+
+        const prev = k > 0 ? p.points[k - 1] : p.points[k];
+        const delta = Math.round((p.points[k] - prev) * 100) / 100;
+        const deltaEl = row.querySelector('.rc-delta');
+        deltaEl.textContent = !instant && delta ? `${delta > 0 ? '+' : ''}${fmtPoints(delta)}` : '';
+        deltaEl.className = `rc-delta ${delta > 0 ? 'up' : delta < 0 ? 'down' : ''}`;
+        animatePoints(row, p.points[k], instant);
+      });
+      recountView.classList.toggle('is-final', isFinal);
+    }
+
+    function animatePoints(row, target, instant) {
+      const el = row.querySelector('.rc-points');
+      const from = Number(row.dataset.value);
+      row.dataset.value = String(target);
+      if (instant || from === target) {
+        el.textContent = fmtPoints(target);
+        return;
+      }
+      const start = performance.now();
+      const duration = 1400;
+      const tick = (now) => {
+        const t = Math.min(1, (now - start) / duration);
+        const eased = 1 - Math.pow(1 - t, 3);
+        el.textContent = fmtPoints(Math.round((from + (target - from) * eased) * 100) / 100);
+        if (t < 1) requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
     }
 
     loadBtn.addEventListener('click', () => setGameId(gameIdInput.value));

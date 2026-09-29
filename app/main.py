@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import secrets
+import time
 from pathlib import Path
 from typing import Optional
 from uuid import UUID
@@ -28,6 +29,7 @@ from .models import (
     RosterEntry,
 )
 from .question_store import QuestionStore
+from .recount import build_recount, build_rounds
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR.parent / "static"
@@ -320,6 +322,7 @@ def presenter_state(game_id: str, presenter_token: str = Query(...)) -> dict:
         "players": players_view,
         "cashout_keep_open": game.cashout_keep_open,
         "cashout_boost_open": game.cashout_boost_open,
+        "recount_started_at": game.recount_started_at,
     }
 
 
@@ -366,6 +369,13 @@ def screen_state(game_id: str) -> dict:
         "last_result": last_result,
         "intermission_alive": intermission_alive,
         "intermission_eliminated": intermission_eliminated,
+        "rounds": build_rounds(game, question_store) if game.phase == GamePhase.FINISHED else [],
+        "recount_started_at": game.recount_started_at,
+        # Calculado en el servidor para que todas las pantallas vayan al mismo
+        # paso aunque sus relojes no coincidan.
+        "recount_elapsed_ms": int((time.time() - game.recount_started_at) * 1000)
+        if game.recount_started_at
+        else None,
     }
 
 
@@ -450,6 +460,20 @@ def question_results(
 def finish_game(game_id: str, payload: FinishGameRequest) -> dict:
     updated_game = game_store.finish_game(game_id, payload.presenter_token)
     return {"game_id": updated_game.id, "phase": updated_game.phase}
+
+
+@app.post("/api/games/{game_id}/recount")
+def start_recount(game_id: str, payload: FinishGameRequest) -> dict:
+    game = game_store.start_recount(game_id, payload.presenter_token)
+    return {"game_id": game.id, "recount_started_at": game.recount_started_at}
+
+
+@app.get("/api/games/{game_id}/recount")
+def get_recount(game_id: str) -> dict:
+    game = game_store.get_game(game_id)
+    if game.phase != GamePhase.FINISHED:
+        raise HTTPException(status_code=400, detail="La partida aún no ha terminado")
+    return build_recount(game, question_store)
 
 
 @app.delete("/api/games/{game_id}")

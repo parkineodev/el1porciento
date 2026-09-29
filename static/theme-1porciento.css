@@ -634,3 +634,204 @@ body.theme-1p.screen[data-phase]:not([data-phase="lobby"]) #setupCard {
     aspect-ratio: auto;
   }
 }
+
+/* ---------- Final de partida (screen.html) ---------- */
+
+body.theme-1p.screen[data-phase="finished"] .stage,
+body.theme-1p.screen[data-phase="finished"] #resultsCard {
+  display: none;
+}
+
+.theme-1p .rounds-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 14px;
+}
+
+.theme-1p .round-item {
+  padding: 14px 18px;
+  border: 1px solid var(--gold-dark);
+  border-radius: 18px;
+  background: rgba(10, 6, 24, 0.55);
+}
+
+.theme-1p .round-title {
+  margin-bottom: 8px;
+  font-size: clamp(16px, 1.4vw, 22px);
+  font-weight: 800;
+}
+
+.theme-1p .round-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 10px;
+  margin-top: 4px;
+  font-size: clamp(14px, 1.2vw, 19px);
+}
+
+.theme-1p .round-tag {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.8em;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.theme-1p .round-tag.out {
+  background: #7a1c1c;
+}
+
+.theme-1p .round-tag.cash {
+  background: #6b4a0b;
+}
+
+/* Recuento final: ocupa toda la pantalla */
+.theme-1p .recount {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  flex-direction: column;
+  gap: 2vh;
+  padding: 3vh max(3vw, calc((100vw - 1100px) / 2));
+  background: radial-gradient(ellipse at 50% 40%, var(--bg-center) 0%, var(--bg-edge) 75%);
+}
+
+.theme-1p .recount-head {
+  text-align: center;
+}
+
+.theme-1p .recount-kicker {
+  font-size: clamp(13px, 1.3vw, 18px);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.theme-1p #recountTitle {
+  margin: 4px 0 10px;
+  font-size: clamp(26px, 3.4vw, 54px);
+  font-weight: 800;
+}
+
+.theme-1p .recount-progress {
+  max-width: 600px;
+  height: 6px;
+  margin: 0 auto;
+  border: 1px solid var(--gold-dark);
+  border-radius: 999px;
+  background: rgba(10, 6, 24, 0.6);
+  overflow: hidden;
+}
+
+.theme-1p #recountProgress {
+  width: 0;
+  height: 100%;
+  background: #ffffff;
+  transition: width 0.6s ease;
+}
+
+.theme-1p .recount-board {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.theme-1p .rc-row {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 22px;
+  border: 1px solid rgba(245, 200, 66, 0.25);
+  border-radius: 14px;
+  background: linear-gradient(135deg, var(--panel-dark), #1a0c5e);
+  font-size: clamp(16px, 2.3vh, 28px);
+  transition: transform 1.1s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.8s ease, box-shadow 0.4s ease;
+}
+
+.theme-1p .rc-row.qualified {
+  border: 2px solid var(--gold-light);
+  background: linear-gradient(135deg, var(--panel-dark), var(--panel-indigo));
+}
+
+.theme-1p .rc-pos {
+  display: grid;
+  place-items: center;
+  width: 2.2em;
+  height: 1.6em;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.12);
+  font-weight: 800;
+}
+
+.theme-1p .rc-row.qualified .rc-pos {
+  background: linear-gradient(145deg, var(--gold-light), var(--gold-dark));
+  color: var(--badge-letter);
+}
+
+.theme-1p .rc-name {
+  flex: 1;
+  overflow: hidden;
+  font-weight: 700;
+  text-transform: uppercase;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.theme-1p .rc-delta {
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 0.8em;
+  font-weight: 700;
+}
+
+.theme-1p .rc-delta.up {
+  background: #0b6b47;
+}
+
+.theme-1p .rc-delta.down {
+  background: #7a1c1c;
+}
+
+.theme-1p .rc-points {
+  min-width: 4.5em;
+  text-align: right;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.theme-1p .recount-cut {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--gold-light), transparent);
+  transition: transform 1.1s ease;
+}
+
+.theme-1p .recount-cut span {
+  position: absolute;
+  right: 24px;
+  bottom: 4px;
+  font-size: clamp(11px, 1.1vw, 15px);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.theme-1p .recount.is-final .rc-row:not(.qualified) {
+  opacity: 0.15 !important;
+}
+
+.theme-1p .recount.is-final .rc-row.qualified {
+  box-shadow: 0 0 22px rgba(245, 200, 66, 0.45);
+}

@@ -85,6 +85,10 @@
             <button class="btn" id="intermissionBtn" type="button">Mostrar resumen ronda</button>
           </div>
           <div class="form-row">
+            <button class="btn" id="recountBtn" type="button" disabled>Hacer recuento final</button>
+            <span class="hint" id="recountHint">Se activa al terminar la partida.</span>
+          </div>
+          <div class="form-row">
             <span class="hint" id="cashoutStatusKeep">Plantarse mantener: cerrado</span>
             <span class="hint" id="cashoutStatusBoost">Plantarse x1.5: cerrado</span>
           </div>
@@ -148,6 +152,8 @@
     const openBtn = document.getElementById('openBtn');
     const closeBtn = document.getElementById('closeBtn');
     const finishBtn = document.getElementById('finishBtn');
+    const recountBtn = document.getElementById('recountBtn');
+    const recountHint = document.getElementById('recountHint');
     const cashoutOpenKeepBtn = document.getElementById('cashoutOpenKeepBtn');
     const cashoutCloseKeepBtn = document.getElementById('cashoutCloseKeepBtn');
     const cashoutOpenBoostBtn = document.getElementById('cashoutOpenBoostBtn');
@@ -258,6 +264,14 @@
 
     function renderState(state) {
       phaseBadge.textContent = state.phase.toUpperCase();
+      const finished = state.phase === 'finished';
+      recountBtn.disabled = !finished;
+      recountBtn.textContent = state.recount_started_at ? 'Repetir recuento final' : 'Hacer recuento final';
+      recountHint.textContent = !finished
+        ? 'Se activa al terminar la partida.'
+        : state.recount_started_at
+        ? 'El recuento se está mostrando en la pantalla grande.'
+        : 'La pantalla grande muestra el desglose por rondas. Pulsa para lanzar el recuento.';
       updateBadges(state.code);
       currentQuestionId = state.current_question?.id || null;
       cashoutStatusKeep.textContent = `Plantarse mantener: ${state.cashout_keep_open ? 'abierto' : 'cerrado'}`;
@@ -354,6 +368,10 @@
 
     finishBtn.addEventListener('click', () => {
       callAction('finish', {});
+    });
+
+    recountBtn.addEventListener('click', () => {
+      callAction('recount', {});
     });
 
     cashoutOpenKeepBtn.addEventListener('click', () => {
