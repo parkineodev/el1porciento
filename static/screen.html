@@ -144,7 +144,12 @@
       countsBadge.textContent = `${state.alive_count} vivos · ${state.total_players} jugadores`;
       if (state.code) {
         const url = `${window.location.origin}/?code=${encodeURIComponent(state.code)}`;
-        joinLink.textContent = url;
+        // location.origin siempre da el dominio en su forma ASCII/punycode
+        // (xn--iakiymarta-t9a.com), aunque el navegador lo muestre con la
+        // ñ en la barra de direcciones. Para el texto visible lo pasamos a
+        // la forma legible; el enlace y el QR usan la URL real, que
+        // funciona igual.
+        joinLink.textContent = url.replace('xn--iakiymarta-t9a.com', 'iñakiymarta.com');
         joinLink.href = url;
         if (!qr) {
           qr = new QRious({ element: qrCanvas, size: 150, value: url, level: 'H' });
