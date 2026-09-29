@@ -51,19 +51,14 @@
 
     <section id="gameSection" style="display:none;">
       <div class="question-stage" id="questionCard">
-        <div class="stage-top">
-          <div class="timer-medal" style="display:none;" id="timerBar">
-            <div class="timer-fill" id="timerFill"></div>
-            <div class="timer-medal-label"><span>1%</span></div>
-          </div>
-          <span class="alive-count" id="aliveCountBadge"></span>
-          <span class="badge" id="phaseBadge">LOBBY</span>
-        </div>
+        <button id="jokerBtn" class="btn joker-btn" type="button">Usar comodín</button>
+        <span class="badge" id="phaseBadge">LOBBY</span>
         <div class="panel question-panel">
           <h2 id="questionTitle" class="question-label">Esperando pregunta…</h2>
           <p id="questionText" class="hint">El presentador abrirá la siguiente pregunta.</p>
           <p id="usualCorrectHint" class="hint" style="display:none;"></p>
         </div>
+        <div class="time-line"><div class="time-line-fill"></div></div>
         <img id="questionImage" class="question-image-large" alt="" style="display:none;">
         <div id="optionsContainer" class="options-grid tight"></div>
         <div id="freeTextContainer" style="display:none; gap:10px;" class="form-row">
@@ -74,7 +69,13 @@
           <button class="btn" id="cashoutKeepBtn" type="button">Plantarse (mantener)</button>
           <button class="btn" id="cashoutBoostBtn" type="button">Plantarse x1.5</button>
         </div>
-        <button id="jokerBtn" class="btn joker-btn" type="button">Usar comodín</button>
+        <div class="stage-bottom">
+          <div class="timer-medal" style="display:none;" id="timerBar">
+            <div class="timer-fill" id="timerFill"></div>
+            <div class="timer-medal-label"><span id="medalLabel">1%</span></div>
+          </div>
+          <span class="alive-count" id="aliveCountBadge"></span>
+        </div>
         <div class="info-strip">
           <div class="status-row">
             <span class="badge" id="aliveBadge">—</span>
@@ -119,6 +120,7 @@
     const questionCard = document.getElementById('questionCard');
     const cashoutKeepBtn = document.getElementById('cashoutKeepBtn');
     const cashoutRow = document.getElementById('cashoutRow');
+    const medalLabel = document.getElementById('medalLabel');
     const aliveCountBadge = document.getElementById('aliveCountBadge');
     const cashoutBoostBtn = document.getElementById('cashoutBoostBtn');
     const codeInput = document.getElementById('codeInput');
@@ -348,6 +350,10 @@
         autoSubmitTimeout = null;
       }
 
+      const pctKnown = state.current_question?.usual_correct_percentage;
+      medalLabel.textContent =
+        pctKnown != null ? `${String(pctKnown).replace('.', ',')}%` : '1%';
+
       const ms = state.answer_time_left_ms ?? 0;
       if (state.phase === 'answering' && ms > 0) {
         timerBar.style.display = 'block';
@@ -378,7 +384,7 @@
           const remaining = Math.max(0, timerEndsAt - Date.now());
           const pct = Math.max(0, Math.min(100, (remaining / timerTotal) * 100));
           timerFill.style.width = pct + '%';
-          timerBar.style.setProperty('--pct', pct);
+          document.body.style.setProperty('--pct', pct);
           if (
             remaining <= 0 &&
             timerInterval &&
@@ -396,7 +402,15 @@
         update();
         timerInterval = setInterval(update, 150);
       } else {
-        timerBar.style.display = 'none';
+        // Fuera del tiempo de respuesta el medallón sigue mostrando el % de
+        // la pregunta, con el anillo lleno.
+        const questionOnScreen =
+          state.current_question &&
+          ['question_waiting', 'answering', 'results'].includes(state.phase) &&
+          !state.can_cashout_keep &&
+          !state.can_cashout_boost;
+        timerBar.style.display = questionOnScreen ? 'block' : 'none';
+        document.body.style.setProperty('--pct', 100);
       }
     }
 

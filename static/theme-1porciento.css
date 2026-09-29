@@ -388,14 +388,38 @@ button.option-card:not(:disabled) {
   gap: 16px;
 }
 
-.theme-1p .question-stage .stage-top {
+.theme-1p .question-stage .stage-bottom {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  min-height: 64px;
+  gap: 12px;
 }
 
-/* En el móvil el medallón va en la cabecera de la pregunta: flotando
+/* Barra de tiempo horizontal bajo la pregunta; se vacía con --pct */
+.theme-1p .time-line {
+  display: none;
+  height: 10px;
+  border: 1px solid var(--gold-dark);
+  border-radius: 999px;
+  background: rgba(10, 6, 24, 0.6);
+  overflow: hidden;
+}
+
+body.theme-1p[data-phase="answering"] .time-line {
+  display: block;
+}
+
+.theme-1p .time-line-fill {
+  height: 100%;
+  width: calc(var(--pct, 100) * 1%);
+  border-radius: inherit;
+  background: #ffffff;
+}
+
+.theme-1p.screen .time-line {
+  height: 14px;
+}
+
+/* En el móvil el medallón va al final de la pregunta, no flotando:
    taparía opciones al hacer scroll */
 .theme-1p .question-stage .timer-medal {
   position: relative;

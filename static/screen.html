@@ -53,6 +53,7 @@
         <h2 id="questionTitle">Esperando...</h2>
         <p id="questionText" class="hint">Cuando el presentador abra una pregunta, aparecerá aquí.</p>
       </div>
+      <div class="time-line"><div class="time-line-fill"></div></div>
       <img id="questionImage" class="question-image-large" style="display:none;" alt="">
       <div id="optionsContainer" class="options-grid"></div>
       <span class="badge timer-big" id="timeBadge">—</span>
@@ -142,7 +143,7 @@
       const remaining = Math.max(0, timerEndsAt - Date.now());
       const pct = Math.max(0, Math.min(100, (remaining / timerTotal) * 100));
       timerFill.style.width = pct + '%';
-      timerBar.style.setProperty('--pct', pct);
+      document.body.style.setProperty('--pct', pct);
       timeBadge.textContent = `Tiempo: ${(remaining / 1000).toFixed(1)}s`;
       if (remaining <= 0) stopTimer();
     }
@@ -234,7 +235,7 @@
         startTimer(timeLeft, total);
       } else {
         stopTimer();
-        timerBar.style.setProperty('--pct', 100);
+        document.body.style.setProperty('--pct', 100);
         timeBadge.textContent = q.time_limit_seconds ? `Tiempo: ${q.time_limit_seconds}s` : '—';
       }
 
