@@ -55,6 +55,7 @@ class Question(BaseModel):
     points: int = Field(0, ge=0)
     options: Optional[List[AnswerOption]] = None
     correct_free_text: Optional[str] = None
+    numeric_answer: bool = False
 
     def get_correct_option_id(self) -> Optional[str]:
         if not self.options:
@@ -88,6 +89,7 @@ class Question(BaseModel):
             options=options_public,
             correct_option_id=self.get_correct_option_id() if include_correct else None,
             correct_free_text=self.correct_free_text if include_correct else None,
+            numeric_answer=self.numeric_answer,
         )
 
 
@@ -102,6 +104,7 @@ class QuestionPublic(BaseModel):
     options: Optional[List[AnswerOptionPublic]] = None
     correct_option_id: Optional[str] = None
     correct_free_text: Optional[str] = None
+    numeric_answer: bool = False
 
 
 class AnswerOptionPayload(BaseModel):
@@ -133,6 +136,7 @@ class QuestionPayload(BaseModel):
     points: int = Field(0, ge=0)
     time_limit_seconds: int = Field(..., gt=0)
     correct_free_text: Optional[str] = None
+    numeric_answer: bool = False
     options: Optional[List[AnswerOptionPayload]] = None
 
 

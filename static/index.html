@@ -514,6 +514,15 @@
       } else {
         optionsContainer.innerHTML = '';
         freeTextContainer.style.display = 'flex';
+        if (q.numeric_answer) {
+          freeTextInput.setAttribute('inputmode', 'numeric');
+          freeTextInput.setAttribute('pattern', '[0-9]*');
+          freeTextInput.placeholder = 'Escribe un número';
+        } else {
+          freeTextInput.setAttribute('inputmode', 'text');
+          freeTextInput.removeAttribute('pattern');
+          freeTextInput.placeholder = 'Escribe tu respuesta';
+        }
         if (isNewQuestion) {
           freeTextInput.value = '';
           freeTextDraft = '';
@@ -612,6 +621,10 @@
     cashoutKeepBtn.addEventListener('click', () => cashOut(1, lastState));
     cashoutBoostBtn.addEventListener('click', () => cashOut(1.5, lastState));
     freeTextInput.addEventListener('input', (e) => {
+      if (lastState?.current_question?.numeric_answer) {
+        const digitsOnly = e.target.value.replace(/[^0-9]/g, '');
+        if (digitsOnly !== e.target.value) e.target.value = digitsOnly;
+      }
       freeTextDraft = e.target.value;
     });
 

@@ -59,6 +59,7 @@ def _row_to_question(row: dict) -> Question:
         points=row["points"],
         options=options,
         correct_free_text=row["correct_free_text"],
+        numeric_answer=row["numeric_answer"],
     )
 
 
@@ -88,6 +89,7 @@ def _payload_to_row_values(payload: QuestionPayload) -> tuple:
         payload.points,
         payload.time_limit_seconds,
         payload.correct_free_text,
+        payload.numeric_answer,
         options_json,
     )
 
@@ -109,7 +111,7 @@ class QuestionStore:
             rows = conn.execute(
                 """
                 select id, sort_order, type, text, image_url, points,
-                       time_limit_seconds, correct_free_text, options
+                       time_limit_seconds, correct_free_text, numeric_answer, options
                 from public.elporciento_questions
                 order by sort_order asc
                 """
@@ -124,6 +126,7 @@ class QuestionStore:
             "points",
             "time_limit_seconds",
             "correct_free_text",
+            "numeric_answer",
             "options",
         ]
         parsed = [_row_to_question(dict(zip(columns, row))) for row in rows]
@@ -166,8 +169,8 @@ class QuestionStore:
             conn.execute(
                 """
                 insert into public.elporciento_questions
-                  (id, sort_order, type, text, image_url, points, time_limit_seconds, correct_free_text, options)
-                values (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                  (id, sort_order, type, text, image_url, points, time_limit_seconds, correct_free_text, numeric_answer, options)
+                values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 _payload_to_row_values(payload),
             )
@@ -197,7 +200,7 @@ class QuestionStore:
                     """
                     update public.elporciento_questions
                     set sort_order = %s, type = %s, text = %s, image_url = %s, points = %s,
-                        time_limit_seconds = %s, correct_free_text = %s, options = %s,
+                        time_limit_seconds = %s, correct_free_text = %s, numeric_answer = %s, options = %s,
                         updated_at = now()
                     where id = %s
                     """,
@@ -213,6 +216,7 @@ class QuestionStore:
                 payload.points,
                 payload.time_limit_seconds,
                 payload.correct_free_text,
+                payload.numeric_answer,
                 options_json,
                 question_id,
             )
@@ -243,6 +247,7 @@ class QuestionStore:
                     previous.points,
                     previous.time_limit_seconds,
                     previous.correct_free_text,
+                    previous.numeric_answer,
                     previous_options_json,
                     question_id,
                 )
