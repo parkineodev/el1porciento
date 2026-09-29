@@ -75,6 +75,10 @@
             <input id="timeLimitInput" class="input" type="number" min="1" value="20" required>
           </div>
           <div class="grid" style="gap:6px;">
+            <label class="hint">% que suele acertarla (opcional, dato informativo tuyo)</label>
+            <input id="usualCorrectPercentageInput" class="input" type="number" min="0" max="100" step="0.1" placeholder="p. ej. 35">
+          </div>
+          <div class="grid" style="gap:6px;">
             <label class="hint">Texto de la pregunta</label>
             <input id="textInput" class="input" required>
           </div>
@@ -127,6 +131,7 @@
     const typeSelect = document.getElementById('typeSelect');
     const pointsInput = document.getElementById('pointsInput');
     const timeLimitInput = document.getElementById('timeLimitInput');
+    const usualCorrectPercentageInput = document.getElementById('usualCorrectPercentageInput');
     const textInput = document.getElementById('textInput');
     const questionImageFile = document.getElementById('questionImageFile');
     const questionImagePreview = document.getElementById('questionImagePreview');
@@ -325,6 +330,7 @@
       typeSelect.value = question.type;
       pointsInput.value = question.points;
       timeLimitInput.value = question.time_limit_seconds;
+      usualCorrectPercentageInput.value = question.usual_correct_percentage ?? '';
       textInput.value = question.text;
       questionImageUrl.value = question.image;
       questionImagePreview.src = question.image;
@@ -366,6 +372,8 @@
         image_url: questionImageUrl.value || null,
         points: Number(pointsInput.value),
         time_limit_seconds: Number(timeLimitInput.value),
+        usual_correct_percentage:
+          usualCorrectPercentageInput.value !== '' ? Number(usualCorrectPercentageInput.value) : null,
         correct_free_text: isFreeText ? correctFreeTextInput.value.trim() : null,
         numeric_answer: isFreeText ? numericAnswerInput.checked : false,
         options: isFreeText ? null : collectOptions(),
@@ -426,7 +434,7 @@
               <span class="badge">${q.type === 'free_text' ? 'Respuesta libre' : 'Opción múltiple'}</span>
               ${q.type === 'free_text' && q.numeric_answer ? '<span class="badge">🔢 Numérica</span>' : ''}
             </div>
-            <p class="hint">ID: ${q.id} · ${q.points} puntos · ${q.time_limit_seconds}s</p>
+            <p class="hint">ID: ${q.id} · ${q.points} puntos · ${q.time_limit_seconds}s${q.usual_correct_percentage != null ? ` · suele acertarla el ${q.usual_correct_percentage}%` : ''}</p>
             ${q.image ? `<img src="${q.image}" style="max-height:100px; border-radius:8px;">` : ''}
             ${q.type === 'free_text' ? `<p class="hint">Respuesta correcta: ${q.correct_free_text}</p>` : `<p class="hint">${optionsSummary}</p>`}
             <div class="form-row" style="margin-top:10px;">

@@ -276,7 +276,13 @@
       });
       playersBadge.textContent = `${orderedPlayers.length} jugadores`;
       stateText.textContent = `Fase: ${state.phase}.`;
-      questionBadge.textContent = state.current_question ? `Pregunta: ${state.current_question.text}` : 'Pregunta: —';
+      questionBadge.textContent = state.current_question
+        ? `Pregunta: ${state.current_question.text}${
+            state.current_question.usual_correct_percentage != null
+              ? ` (suele acertarla el ${state.current_question.usual_correct_percentage}%)`
+              : ''
+          }`
+        : 'Pregunta: —';
       timerBadge.textContent = state.answer_time_left_ms ? `Tiempo: ${(state.answer_time_left_ms / 1000).toFixed(1)}s` : 'Tiempo: —';
 
       playersTableBody.innerHTML = '';

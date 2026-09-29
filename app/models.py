@@ -56,6 +56,10 @@ class Question(BaseModel):
     options: Optional[List[AnswerOption]] = None
     correct_free_text: Optional[str] = None
     numeric_answer: bool = False
+    # Dato informativo que apunta el admin al crear la pregunta (p. ej. una
+    # estadística real conocida de antemano) -- no se calcula con las
+    # partidas jugadas en la app.
+    usual_correct_percentage: Optional[float] = None
 
     def get_correct_option_id(self) -> Optional[str]:
         if not self.options:
@@ -90,6 +94,7 @@ class Question(BaseModel):
             correct_option_id=self.get_correct_option_id() if include_correct else None,
             correct_free_text=self.correct_free_text if include_correct else None,
             numeric_answer=self.numeric_answer,
+            usual_correct_percentage=self.usual_correct_percentage,
         )
 
 
@@ -105,6 +110,7 @@ class QuestionPublic(BaseModel):
     correct_option_id: Optional[str] = None
     correct_free_text: Optional[str] = None
     numeric_answer: bool = False
+    usual_correct_percentage: Optional[float] = None
 
 
 class AnswerOptionPayload(BaseModel):
@@ -137,6 +143,7 @@ class QuestionPayload(BaseModel):
     time_limit_seconds: int = Field(..., gt=0)
     correct_free_text: Optional[str] = None
     numeric_answer: bool = False
+    usual_correct_percentage: Optional[float] = Field(default=None, ge=0, le=100)
     options: Optional[List[AnswerOptionPayload]] = None
 
 

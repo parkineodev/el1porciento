@@ -66,6 +66,7 @@
         </div>
         <img id="questionImage" class="question-image-large" alt="" style="display:none;">
         <p id="questionText" class="hint">El presentador abrirá la siguiente pregunta.</p>
+        <p id="usualCorrectHint" class="hint" style="display:none;"></p>
         <div id="optionsContainer" class="options-grid tight"></div>
         <div id="freeTextContainer" style="display:none; gap:10px;" class="form-row">
           <input id="freeTextInput" class="input" placeholder="Escribe tu respuesta">
@@ -102,6 +103,7 @@
     const gameSection = document.getElementById('gameSection');
     const questionTitle = document.getElementById('questionTitle');
     const questionText = document.getElementById('questionText');
+    const usualCorrectHint = document.getElementById('usualCorrectHint');
     const questionImage = document.getElementById('questionImage');
     const optionsContainer = document.getElementById('optionsContainer');
     const freeTextContainer = document.getElementById('freeTextContainer');
@@ -417,6 +419,7 @@
         currentQuestionId = null;
         questionTitle.textContent = 'Resumen de la ronda';
         questionText.textContent = '';
+        usualCorrectHint.style.display = 'none';
         questionImage.style.display = 'none';
         optionsContainer.innerHTML = `
           <div class="stat-big">
@@ -438,6 +441,7 @@
           ? 'Plantarse está abierto. Elige si mantienes o x1.5 tus puntos.'
           : 'El presentador aún no ha abierto la ronda.';
         optionsContainer.innerHTML = '';
+        usualCorrectHint.style.display = 'none';
         questionImage.style.display = 'none';
         freeTextContainer.style.display = 'none';
         jokerBtn.disabled = true;
@@ -460,6 +464,12 @@
       }
       questionTitle.textContent = `Pregunta ${q.order}`;
       questionText.textContent = q.text;
+      if (q.usual_correct_percentage != null) {
+        usualCorrectHint.textContent = `Normalmente la acierta el ${q.usual_correct_percentage}% de la gente.`;
+        usualCorrectHint.style.display = 'block';
+      } else {
+        usualCorrectHint.style.display = 'none';
+      }
       if (q.image) {
         questionImage.src = q.image;
         questionImage.alt = q.text;

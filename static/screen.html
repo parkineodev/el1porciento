@@ -210,7 +210,10 @@
       resultsCard.style.display = 'none';
       const q = state.current_question;
       questionTitle.textContent = q.text;
-      questionText.textContent = '';
+      questionText.textContent =
+        q.usual_correct_percentage != null
+          ? `Normalmente la acierta el ${q.usual_correct_percentage}% de la gente.`
+          : '';
       if (state.phase === 'answering' && timeLeft !== null) {
         const total = (q.time_limit_seconds || 0) * 1000 || timeLeft;
         timerBar.style.display = 'block';

@@ -60,6 +60,7 @@ def _row_to_question(row: dict) -> Question:
         options=options,
         correct_free_text=row["correct_free_text"],
         numeric_answer=row["numeric_answer"],
+        usual_correct_percentage=row["usual_correct_percentage"],
     )
 
 
@@ -90,6 +91,7 @@ def _payload_to_row_values(payload: QuestionPayload) -> tuple:
         payload.time_limit_seconds,
         payload.correct_free_text,
         payload.numeric_answer,
+        payload.usual_correct_percentage,
         options_json,
     )
 
@@ -111,7 +113,8 @@ class QuestionStore:
             rows = conn.execute(
                 """
                 select id, sort_order, type, text, image_url, points,
-                       time_limit_seconds, correct_free_text, numeric_answer, options
+                       time_limit_seconds, correct_free_text, numeric_answer,
+                       usual_correct_percentage, options
                 from public.elporciento_questions
                 order by sort_order asc
                 """
@@ -127,6 +130,7 @@ class QuestionStore:
             "time_limit_seconds",
             "correct_free_text",
             "numeric_answer",
+            "usual_correct_percentage",
             "options",
         ]
         parsed = [_row_to_question(dict(zip(columns, row))) for row in rows]
@@ -169,8 +173,8 @@ class QuestionStore:
             conn.execute(
                 """
                 insert into public.elporciento_questions
-                  (id, sort_order, type, text, image_url, points, time_limit_seconds, correct_free_text, numeric_answer, options)
-                values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                  (id, sort_order, type, text, image_url, points, time_limit_seconds, correct_free_text, numeric_answer, usual_correct_percentage, options)
+                values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 _payload_to_row_values(payload),
             )
@@ -200,7 +204,8 @@ class QuestionStore:
                     """
                     update public.elporciento_questions
                     set sort_order = %s, type = %s, text = %s, image_url = %s, points = %s,
-                        time_limit_seconds = %s, correct_free_text = %s, numeric_answer = %s, options = %s,
+                        time_limit_seconds = %s, correct_free_text = %s, numeric_answer = %s,
+                        usual_correct_percentage = %s, options = %s,
                         updated_at = now()
                     where id = %s
                     """,
@@ -217,6 +222,7 @@ class QuestionStore:
                 payload.time_limit_seconds,
                 payload.correct_free_text,
                 payload.numeric_answer,
+                payload.usual_correct_percentage,
                 options_json,
                 question_id,
             )
@@ -248,6 +254,7 @@ class QuestionStore:
                     previous.time_limit_seconds,
                     previous.correct_free_text,
                     previous.numeric_answer,
+                    previous.usual_correct_percentage,
                     previous_options_json,
                     question_id,
                 )
