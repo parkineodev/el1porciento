@@ -277,6 +277,13 @@
       freeTextFields.style.display = isFreeText ? 'grid' : 'none';
       optionsFields.style.display = isFreeText ? 'none' : 'block';
       correctFreeTextInput.required = isFreeText;
+      // El "ID de la opción" de cada fila sigue siendo required aunque la
+      // sección esté oculta con display:none -- el navegador bloquea el
+      // envío del formulario en silencio (no hay nada visible que avise)
+      // si se deja marcado al elegir "Respuesta libre".
+      optionsList.querySelectorAll('.opt-id').forEach((input) => {
+        input.required = !isFreeText;
+      });
     }
 
     typeSelect.addEventListener('change', updateTypeVisibility);
