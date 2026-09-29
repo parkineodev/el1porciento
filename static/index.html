@@ -525,6 +525,10 @@
       cashoutKeepBtn.disabled = false;
       cashoutBoostBtn.disabled = false;
 
+      optionsContainer.classList.toggle(
+        'has-images',
+        q.type === 'single_choice' && !!q.options?.some((opt) => opt.image),
+      );
       if (q.type === 'single_choice' && q.options) {
         freeTextContainer.style.display = 'none';
         optionsContainer.innerHTML = '';
