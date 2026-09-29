@@ -438,6 +438,12 @@ def finish_game(game_id: str, payload: FinishGameRequest) -> dict:
     return {"game_id": updated_game.id, "phase": updated_game.phase}
 
 
+@app.delete("/api/games/{game_id}")
+def delete_game(game_id: str, presenter_token: str = Query(...)) -> dict:
+    game_store.delete_game(game_id, presenter_token)
+    return {"status": "ok"}
+
+
 @app.post("/api/games/join")
 def join_game(payload: JoinGameRequest) -> dict:
     game, player, player_token = game_store.join_game(

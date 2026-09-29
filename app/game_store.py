@@ -457,6 +457,19 @@ class GameStore:
             self._save(game)
             return game
 
+    def delete_game(self, game_id: str, presenter_token: str) -> None:
+        with self._lock_for(game_id):
+            game = self.get_game(game_id)
+            self._validate_presenter(game, presenter_token)
+
+            with self._pool.connection() as conn:
+                conn.execute(
+                    "delete from public.elporciento_games where id = %s", (game_id,)
+                )
+
+            self._games.pop(game_id, None)
+            self._code_index.pop(game.code.upper(), None)
+
     def cash_out(
         self,
         game_id: str,
