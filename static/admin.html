@@ -79,10 +79,10 @@
             <input id="textInput" class="input" required>
           </div>
           <div class="grid" style="gap:6px;">
-            <label class="hint">Imagen de la pregunta</label>
+            <label class="hint">Imagen de la pregunta (opcional)</label>
             <input id="questionImageFile" class="input" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml">
             <img id="questionImagePreview" style="max-height:120px; display:none; border-radius:8px;">
-            <input id="questionImageUrl" type="hidden" required>
+            <input id="questionImageUrl" type="hidden">
           </div>
 
           <div id="freeTextFields" class="grid" style="gap:6px;">
@@ -215,10 +215,10 @@
           </div>
         </div>
         <div class="grid" style="gap:6px; margin-top:8px;">
-          <label class="hint">Imagen de la opción</label>
+          <label class="hint">Imagen de la opción (opcional)</label>
           <input class="input opt-image-file" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml">
           <img class="opt-image-preview" src="${option?.image ?? ''}" style="max-height:90px; ${option?.image ? '' : 'display:none;'} border-radius:8px;">
-          <input type="hidden" class="opt-image-url" value="${option?.image ?? ''}" required>
+          <input type="hidden" class="opt-image-url" value="${option?.image ?? ''}">
         </div>
         <div class="form-row" style="margin-top:8px; align-items:center;">
           <label class="hint"><input type="radio" name="correctOption" class="opt-correct" ${option?.correct ? 'checked' : ''}> Es la respuesta correcta</label>
@@ -342,7 +342,7 @@
       return [...optionsList.querySelectorAll('[data-row-id]')].map((row) => ({
         id: row.querySelector('.opt-id').value.trim(),
         text: row.querySelector('.opt-text').value.trim() || null,
-        image_url: row.querySelector('.opt-image-url').value,
+        image_url: row.querySelector('.opt-image-url').value || null,
         correct: row.querySelector('.opt-correct').checked,
       }));
     }
@@ -357,26 +357,16 @@
         sort_order: Number(orderInput.value),
         type: typeSelect.value,
         text: textInput.value.trim(),
-        image_url: questionImageUrl.value,
+        image_url: questionImageUrl.value || null,
         points: Number(pointsInput.value),
         time_limit_seconds: Number(timeLimitInput.value),
         correct_free_text: isFreeText ? correctFreeTextInput.value.trim() : null,
         options: isFreeText ? null : collectOptions(),
       };
 
-      if (!payload.image_url) {
-        formHint.textContent = 'Falta subir la imagen de la pregunta.';
+      if (!isFreeText && payload.options.filter((o) => o.correct).length !== 1) {
+        formHint.textContent = 'Marca exactamente una opción como correcta.';
         return;
-      }
-      if (!isFreeText) {
-        if (payload.options.some((o) => !o.image_url)) {
-          formHint.textContent = 'Falta subir la imagen de alguna opción.';
-          return;
-        }
-        if (payload.options.filter((o) => o.correct).length !== 1) {
-          formHint.textContent = 'Marca exactamente una opción como correcta.';
-          return;
-        }
       }
 
       try {

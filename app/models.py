@@ -32,14 +32,14 @@ class AnswerOption(BaseModel):
 
     id: str
     text: Optional[str] = None
-    image: str
+    image: Optional[str] = None
     correct: bool = False
 
 
 class AnswerOptionPublic(BaseModel):
     id: str
     text: Optional[str] = None
-    image: str
+    image: Optional[str] = None
     correct: Optional[bool] = None
 
 
@@ -50,7 +50,7 @@ class Question(BaseModel):
     order: int
     type: QuestionType
     text: str
-    image: str
+    image: Optional[str] = None
     time_limit_seconds: int = Field(..., gt=0)
     points: int = Field(0, ge=0)
     options: Optional[List[AnswerOption]] = None
@@ -96,7 +96,7 @@ class QuestionPublic(BaseModel):
     order: int
     type: QuestionType
     text: str
-    image: str
+    image: Optional[str] = None
     time_limit_seconds: int
     points: int
     options: Optional[List[AnswerOptionPublic]] = None
@@ -114,7 +114,7 @@ class AnswerOptionPayload(BaseModel):
 
     id: str
     text: Optional[str] = None
-    image_url: str
+    image_url: Optional[str] = None
     correct: bool = False
 
 
@@ -129,7 +129,7 @@ class QuestionPayload(BaseModel):
     sort_order: int
     type: QuestionType
     text: str = Field(..., min_length=1)
-    image_url: str = Field(..., min_length=1)
+    image_url: Optional[str] = None
     points: int = Field(0, ge=0)
     time_limit_seconds: int = Field(..., gt=0)
     correct_free_text: Optional[str] = None
