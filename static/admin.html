@@ -86,6 +86,7 @@
             <label class="hint">Imagen de la pregunta (opcional)</label>
             <input id="questionImageFile" class="input" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml">
             <img id="questionImagePreview" style="max-height:120px; display:none; border-radius:8px;">
+            <button class="btn secondary" type="button" id="removeQuestionImageBtn" style="display:none; justify-self:start;">Quitar imagen</button>
             <input id="questionImageUrl" type="hidden">
           </div>
 
@@ -136,6 +137,7 @@
     const questionImageFile = document.getElementById('questionImageFile');
     const questionImagePreview = document.getElementById('questionImagePreview');
     const questionImageUrl = document.getElementById('questionImageUrl');
+    const removeQuestionImageBtn = document.getElementById('removeQuestionImageBtn');
     const freeTextFields = document.getElementById('freeTextFields');
     const correctFreeTextInput = document.getElementById('correctFreeTextInput');
     const numericAnswerInput = document.getElementById('numericAnswerInput');
@@ -228,6 +230,7 @@
           <label class="hint">Imagen de la opción (opcional)</label>
           <input class="input opt-image-file" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml">
           <img class="opt-image-preview" src="${option?.image ?? ''}" style="max-height:90px; ${option?.image ? '' : 'display:none;'} border-radius:8px;">
+          <button class="btn secondary opt-image-remove" type="button" style="${option?.image ? '' : 'display:none;'} justify-self:start;">Quitar imagen</button>
           <input type="hidden" class="opt-image-url" value="${option?.image ?? ''}">
         </div>
         <div class="form-row" style="margin-top:8px; align-items:center;">
@@ -244,7 +247,26 @@
       const fileInput = wrapper.querySelector('.opt-image-file');
       const preview = wrapper.querySelector('.opt-image-preview');
       const urlField = wrapper.querySelector('.opt-image-url');
-      fileInput.addEventListener('change', () => uploadImage(fileInput, preview, urlField));
+      const removeBtn = wrapper.querySelector('.opt-image-remove');
+      fileInput.addEventListener('change', async () => {
+        await uploadImage(fileInput, preview, urlField);
+        syncRemoveImageBtn(removeBtn, urlField);
+      });
+      removeBtn.addEventListener('click', () => clearImage(fileInput, preview, urlField, removeBtn));
+    }
+
+    function syncRemoveImageBtn(btn, urlField) {
+      btn.style.display = urlField.value ? 'inline-flex' : 'none';
+    }
+
+    // Solo desvincula la imagen del formulario; se aplica al guardar.
+    function clearImage(fileInput, previewEl, urlField, btn) {
+      fileInput.value = '';
+      urlField.value = '';
+      previewEl.removeAttribute('src');
+      previewEl.style.display = 'none';
+      syncRemoveImageBtn(btn, urlField);
+      formHint.textContent = 'Imagen quitada. Pulsa "Guardar pregunta" para aplicarlo.';
     }
 
     addOptionBtn.addEventListener('click', () => addOptionRow(null));
@@ -278,8 +300,13 @@
       }
     }
 
-    questionImageFile.addEventListener('change', () =>
-      uploadImage(questionImageFile, questionImagePreview, questionImageUrl),
+    questionImageFile.addEventListener('change', async () => {
+      await uploadImage(questionImageFile, questionImagePreview, questionImageUrl);
+      syncRemoveImageBtn(removeQuestionImageBtn, questionImageUrl);
+    });
+
+    removeQuestionImageBtn.addEventListener('click', () =>
+      clearImage(questionImageFile, questionImagePreview, questionImageUrl, removeQuestionImageBtn),
     );
 
     function updateTypeVisibility() {
@@ -304,6 +331,7 @@
       idInput.disabled = false;
       questionImagePreview.style.display = 'none';
       questionImageUrl.value = '';
+      syncRemoveImageBtn(removeQuestionImageBtn, questionImageUrl);
       optionsList.innerHTML = '';
       addOptionRow(null);
       addOptionRow(null);
@@ -332,7 +360,8 @@
       timeLimitInput.value = question.time_limit_seconds;
       usualCorrectPercentageInput.value = question.usual_correct_percentage ?? '';
       textInput.value = question.text;
-      questionImageUrl.value = question.image;
+      questionImageUrl.value = question.image || '';
+      syncRemoveImageBtn(removeQuestionImageBtn, questionImageUrl);
       questionImagePreview.src = question.image;
       questionImagePreview.style.display = question.image ? 'block' : 'none';
       correctFreeTextInput.value = question.correct_free_text || '';
