@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>El 1% · Admin de preguntas</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header>
+    <div class="flex">
+      <h1>El 1% · Admin de preguntas</h1>
+    </div>
+    <div class="flex">
+      <button class="btn secondary" id="logoutBtn" style="display:none;">Salir</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="card" id="loginCard">
+      <div class="section-title">
+        <h2>Entrar</h2>
+      </div>
+      <form id="loginForm" class="grid" style="gap:10px; max-width:320px;">
+        <input id="passwordInput" class="input" type="password" placeholder="Contraseña" required>
+        <button class="btn" type="submit">Entrar</button>
+      </form>
+      <p class="hint" id="loginHint"></p>
+    </section>
+
+    <div id="adminArea" style="display:none;">
+      <section class="card">
+        <div class="section-title">
+          <h2>Preguntas</h2>
+          <button class="btn" id="newQuestionBtn" type="button">Nueva pregunta</button>
+        </div>
+        <p class="hint">Se juegan en orden según "Orden". Los cambios se aplican de inmediato a la siguiente pregunta que se abra en cualquier partida en curso.</p>
+        <div id="questionsList" class="grid" style="gap:12px; margin-top:10px;"></div>
+      </section>
+
+      <section class="card" id="formCard" style="display:none;">
+        <div class="section-title">
+          <h2 id="formTitle">Nueva pregunta</h2>
+          <button class="btn secondary" id="cancelFormBtn" type="button">Cancelar</button>
+        </div>
+        <form id="questionForm" class="grid" style="gap:12px;">
+          <div class="grid two">
+            <div class="grid" style="gap:6px;">
+              <label class="hint">ID único (sin espacios)</label>
+              <input id="idInput" class="input" required pattern="[a-zA-Z0-9_\-]+">
+            </div>
+            <div class="grid" style="gap:6px;">
+              <label class="hint">Orden</label>
+              <input id="orderInput" class="input" type="number" min="1" required>
+            </div>
+          </div>
+          <div class="grid two">
+            <div class="grid" style="gap:6px;">
+              <label class="hint">Tipo</label>
+              <select id="typeSelect" class="input">
+                <option value="single_choice">Opción múltiple</option>
+                <option value="free_text">Respuesta libre</option>
+              </select>
+            </div>
+            <div class="grid" style="gap:6px;">
+              <label class="hint">Puntos</label>
+              <input id="pointsInput" class="input" type="number" min="0" value="10" required>
+            </div>
+          </div>
+          <div class="grid" style="gap:6px;">
+            <label class="hint">Tiempo límite (segundos)</label>
+            <input id="timeLimitInput" class="input" type="number" min="1" value="20" required>
+          </div>
+          <div class="grid" style="gap:6px;">
+            <label class="hint">Texto de la pregunta</label>
+            <input id="textInput" class="input" required>
+          </div>
+          <div class="grid" style="gap:6px;">
+            <label class="hint">Imagen de la pregunta</label>
+            <input id="questionImageFile" class="input" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml">
+            <img id="questionImagePreview" style="max-height:120px; display:none; border-radius:8px;">
+            <input id="questionImageUrl" type="hidden" required>
+          </div>
+
+          <div id="freeTextFields" class="grid" style="gap:6px;">
+            <label class="hint">Respuesta correcta (texto exacto, sin mayúsculas)</label>
+            <input id="correctFreeTextInput" class="input">
+          </div>
+
+          <div id="optionsFields">
+            <div class="section-title">
+              <h3>Opciones</h3>
+              <button class="btn secondary" id="addOptionBtn" type="button">Añadir opción</button>
+            </div>
+            <div id="optionsList" class="grid" style="gap:10px;"></div>
+          </div>
+
+          <p class="hint" id="formHint"></p>
+          <button class="btn" type="submit">Guardar pregunta</button>
+        </form>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    const loginCard = document.getElementById('loginCard');
+    const loginForm = document.getElementById('loginForm');
+    const passwordInput = document.getElementById('passwordInput');
+    const loginHint = document.getElementById('loginHint');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const adminArea = document.getElementById('adminArea');
+    const questionsList = document.getElementById('questionsList');
+    const newQuestionBtn = document.getElementById('newQuestionBtn');
+    const formCard = document.getElementById('formCard');
+    const formTitle = document.getElementById('formTitle');
+    const cancelFormBtn = document.getElementById('cancelFormBtn');
+    const questionForm = document.getElementById('questionForm');
+    const idInput = document.getElementById('idInput');
+    const orderInput = document.getElementById('orderInput');
+    const typeSelect = document.getElementById('typeSelect');
+    const pointsInput = document.getElementById('pointsInput');
+    const timeLimitInput = document.getElementById('timeLimitInput');
+    const textInput = document.getElementById('textInput');
+    const questionImageFile = document.getElementById('questionImageFile');
+    const questionImagePreview = document.getElementById('questionImagePreview');
+    const questionImageUrl = document.getElementById('questionImageUrl');
+    const freeTextFields = document.getElementById('freeTextFields');
+    const correctFreeTextInput = document.getElementById('correctFreeTextInput');
+    const optionsFields = document.getElementById('optionsFields');
+    const optionsList = document.getElementById('optionsList');
+    const addOptionBtn = document.getElementById('addOptionBtn');
+    const formHint = document.getElementById('formHint');
+
+    let adminPassword = localStorage.getItem('admin_password') || '';
+    let editingId = null;
+    let optionRowSeq = 0;
+
+    function authHeaders() {
+      return { 'X-Admin-Password': adminPassword, 'Content-Type': 'application/json' };
+    }
+
+    async function api(path, options = {}) {
+      const res = await fetch(path, {
+        ...options,
+        headers: { ...authHeaders(), ...(options.headers || {}) },
+      });
+      if (res.status === 401) {
+        localStorage.removeItem('admin_password');
+        adminPassword = '';
+        showLogin();
+        throw new Error('Sesión caducada, vuelve a entrar.');
+      }
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Error en la petición');
+      }
+      return res.status === 204 ? null : res.json();
+    }
+
+    function showLogin() {
+      loginCard.style.display = 'block';
+      adminArea.style.display = 'none';
+      logoutBtn.style.display = 'none';
+    }
+
+    function showAdmin() {
+      loginCard.style.display = 'none';
+      adminArea.style.display = 'block';
+      logoutBtn.style.display = 'inline-flex';
+      loadQuestions();
+    }
+
+    loginForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      loginHint.textContent = 'Comprobando...';
+      try {
+        const res = await fetch('/api/admin/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: passwordInput.value }),
+        });
+        if (!res.ok) throw new Error('Contraseña incorrecta');
+        adminPassword = passwordInput.value;
+        localStorage.setItem('admin_password', adminPassword);
+        loginHint.textContent = '';
+        showAdmin();
+      } catch (err) {
+        loginHint.textContent = err.message;
+      }
+    });
+
+    logoutBtn.addEventListener('click', () => {
+      localStorage.removeItem('admin_password');
+      adminPassword = '';
+      showLogin();
+    });
+
+    function addOptionRow(option) {
+      const rowId = `opt_${optionRowSeq++}`;
+      const wrapper = document.createElement('div');
+      wrapper.className = 'card';
+      wrapper.dataset.rowId = rowId;
+      wrapper.innerHTML = `
+        <div class="grid two">
+          <div class="grid" style="gap:6px;">
+            <label class="hint">ID de la opción (a, b, c...)</label>
+            <input class="input opt-id" value="${option?.id ?? ''}" required>
+          </div>
+          <div class="grid" style="gap:6px;">
+            <label class="hint">Texto</label>
+            <input class="input opt-text" value="${option?.text ?? ''}">
+          </div>
+        </div>
+        <div class="grid" style="gap:6px; margin-top:8px;">
+          <label class="hint">Imagen de la opción</label>
+          <input class="input opt-image-file" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml">
+          <img class="opt-image-preview" src="${option?.image ?? ''}" style="max-height:90px; ${option?.image ? '' : 'display:none;'} border-radius:8px;">
+          <input type="hidden" class="opt-image-url" value="${option?.image ?? ''}" required>
+        </div>
+        <div class="form-row" style="margin-top:8px; align-items:center;">
+          <label class="hint"><input type="radio" name="correctOption" class="opt-correct" ${option?.correct ? 'checked' : ''}> Es la respuesta correcta</label>
+          <button class="btn secondary" type="button" data-remove-option style="margin-left:auto;">Quitar opción</button>
+        </div>
+      `;
+      optionsList.appendChild(wrapper);
+
+      wrapper.querySelector('[data-remove-option]').addEventListener('click', () => {
+        wrapper.remove();
+      });
+
+      const fileInput = wrapper.querySelector('.opt-image-file');
+      const preview = wrapper.querySelector('.opt-image-preview');
+      const urlField = wrapper.querySelector('.opt-image-url');
+      fileInput.addEventListener('change', () => uploadImage(fileInput, preview, urlField));
+    }
+
+    addOptionBtn.addEventListener('click', () => addOptionRow(null));
+
+    async function uploadImage(fileInput, previewEl, urlField) {
+      const file = fileInput.files?.[0];
+      if (!file) return;
+      previewEl.src = URL.createObjectURL(file);
+      previewEl.style.display = 'block';
+      const wasHint = formHint.textContent;
+      formHint.textContent = 'Subiendo imagen...';
+      try {
+        const body = new FormData();
+        body.append('file', file);
+        const res = await fetch('/api/admin/images', {
+          method: 'POST',
+          headers: { 'X-Admin-Password': adminPassword },
+          body,
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.detail || 'No se pudo subir la imagen');
+        }
+        const data = await res.json();
+        urlField.value = data.url;
+        formHint.textContent = 'Imagen subida.';
+      } catch (err) {
+        formHint.textContent = err.message;
+        fileInput.value = '';
+        previewEl.style.display = 'none';
+      }
+    }
+
+    questionImageFile.addEventListener('change', () =>
+      uploadImage(questionImageFile, questionImagePreview, questionImageUrl),
+    );
+
+    function updateTypeVisibility() {
+      const isFreeText = typeSelect.value === 'free_text';
+      freeTextFields.style.display = isFreeText ? 'grid' : 'none';
+      optionsFields.style.display = isFreeText ? 'none' : 'block';
+      correctFreeTextInput.required = isFreeText;
+    }
+
+    typeSelect.addEventListener('change', updateTypeVisibility);
+
+    function resetForm() {
+      editingId = null;
+      questionForm.reset();
+      idInput.disabled = false;
+      questionImagePreview.style.display = 'none';
+      questionImageUrl.value = '';
+      optionsList.innerHTML = '';
+      addOptionRow(null);
+      addOptionRow(null);
+      updateTypeVisibility();
+      formHint.textContent = '';
+    }
+
+    newQuestionBtn.addEventListener('click', () => {
+      resetForm();
+      formTitle.textContent = 'Nueva pregunta';
+      formCard.style.display = 'block';
+      formCard.scrollIntoView({ behavior: 'smooth' });
+    });
+
+    cancelFormBtn.addEventListener('click', () => {
+      formCard.style.display = 'none';
+    });
+
+    function fillFormForEdit(question) {
+      editingId = question.id;
+      idInput.value = question.id;
+      idInput.disabled = true;
+      orderInput.value = question.order;
+      typeSelect.value = question.type;
+      pointsInput.value = question.points;
+      timeLimitInput.value = question.time_limit_seconds;
+      textInput.value = question.text;
+      questionImageUrl.value = question.image;
+      questionImagePreview.src = question.image;
+      questionImagePreview.style.display = question.image ? 'block' : 'none';
+      correctFreeTextInput.value = question.correct_free_text || '';
+      optionsList.innerHTML = '';
+      (question.options || []).forEach((opt) => addOptionRow(opt));
+      if (!question.options || question.options.length === 0) {
+        addOptionRow(null);
+        addOptionRow(null);
+      }
+      updateTypeVisibility();
+      formHint.textContent = '';
+      formTitle.textContent = `Editar: ${question.id}`;
+      formCard.style.display = 'block';
+      formCard.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    function collectOptions() {
+      return [...optionsList.querySelectorAll('[data-row-id]')].map((row) => ({
+        id: row.querySelector('.opt-id').value.trim(),
+        text: row.querySelector('.opt-text').value.trim() || null,
+        image_url: row.querySelector('.opt-image-url').value,
+        correct: row.querySelector('.opt-correct').checked,
+      }));
+    }
+
+    questionForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      formHint.textContent = 'Guardando...';
+
+      const isFreeText = typeSelect.value === 'free_text';
+      const payload = {
+        id: idInput.value.trim(),
+        sort_order: Number(orderInput.value),
+        type: typeSelect.value,
+        text: textInput.value.trim(),
+        image_url: questionImageUrl.value,
+        points: Number(pointsInput.value),
+        time_limit_seconds: Number(timeLimitInput.value),
+        correct_free_text: isFreeText ? correctFreeTextInput.value.trim() : null,
+        options: isFreeText ? null : collectOptions(),
+      };
+
+      if (!payload.image_url) {
+        formHint.textContent = 'Falta subir la imagen de la pregunta.';
+        return;
+      }
+      if (!isFreeText) {
+        if (payload.options.some((o) => !o.image_url)) {
+          formHint.textContent = 'Falta subir la imagen de alguna opción.';
+          return;
+        }
+        if (payload.options.filter((o) => o.correct).length !== 1) {
+          formHint.textContent = 'Marca exactamente una opción como correcta.';
+          return;
+        }
+      }
+
+      try {
+        if (editingId) {
+          await api(`/api/admin/questions/${editingId}`, {
+            method: 'PUT',
+            body: JSON.stringify(payload),
+          });
+        } else {
+          await api('/api/admin/questions', {
+            method: 'POST',
+            body: JSON.stringify(payload),
+          });
+        }
+        formCard.style.display = 'none';
+        loadQuestions();
+      } catch (err) {
+        formHint.textContent = err.message;
+      }
+    });
+
+    async function deleteQuestion(id) {
+      if (!window.confirm(`¿Borrar la pregunta "${id}"? No se puede deshacer.`)) return;
+      try {
+        await api(`/api/admin/questions/${id}`, { method: 'DELETE' });
+        loadQuestions();
+      } catch (err) {
+        window.alert(err.message);
+      }
+    }
+
+    function renderQuestions(questions) {
+      questionsList.innerHTML = '';
+      if (questions.length === 0) {
+        questionsList.innerHTML = '<p class="hint">Todavía no hay preguntas.</p>';
+        return;
+      }
+      questions
+        .slice()
+        .sort((a, b) => a.order - b.order)
+        .forEach((q) => {
+          const card = document.createElement('div');
+          card.className = 'card';
+          const optionsSummary = (q.options || [])
+            .map((o) => `${o.id.toUpperCase()}: ${o.text || '—'}${o.correct ? ' ✅' : ''}`)
+            .join(' · ');
+          card.innerHTML = `
+            <div class="section-title">
+              <h3>${q.order}. ${q.text}</h3>
+              <span class="badge">${q.type === 'free_text' ? 'Respuesta libre' : 'Opción múltiple'}</span>
+            </div>
+            <p class="hint">ID: ${q.id} · ${q.points} puntos · ${q.time_limit_seconds}s</p>
+            ${q.image ? `<img src="${q.image}" style="max-height:100px; border-radius:8px;">` : ''}
+            ${q.type === 'free_text' ? `<p class="hint">Respuesta correcta: ${q.correct_free_text}</p>` : `<p class="hint">${optionsSummary}</p>`}
+            <div class="form-row" style="margin-top:10px;">
+              <button class="btn secondary" data-edit>Editar</button>
+              <button class="btn danger" data-delete>Borrar</button>
+            </div>
+          `;
+          card.querySelector('[data-edit]').addEventListener('click', () => fillFormForEdit(q));
+          card.querySelector('[data-delete]').addEventListener('click', () => deleteQuestion(q.id));
+          questionsList.appendChild(card);
+        });
+    }
+
+    async function loadQuestions() {
+      try {
+        const questions = await api('/api/admin/questions');
+        renderQuestions(questions);
+      } catch (err) {
+        questionsList.innerHTML = `<p class="hint">${err.message}</p>`;
+      }
+    }
+
+    if (adminPassword) {
+      showAdmin();
+    } else {
+      showLogin();
+    }
+  </script>
+</body>
+</html>

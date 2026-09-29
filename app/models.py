@@ -104,6 +104,38 @@ class QuestionPublic(BaseModel):
     correct_free_text: Optional[str] = None
 
 
+class AnswerOptionPayload(BaseModel):
+    """Entrada del formulario de admin para una opción -- igual que
+    AnswerOption, pero se define aparte para no acoplar el formato del
+    formulario a lo que ya asumen `game_store`/`question_store` al leer
+    (por si en el futuro difieren)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    text: Optional[str] = None
+    image_url: str
+    correct: bool = False
+
+
+class QuestionPayload(BaseModel):
+    """Entrada del formulario de admin para crear/editar una pregunta. El
+    `id` y el `sort_order` los decide quien llama (admin.html), no se
+    autogeneran, para que el admin pueda elegir dónde encaja la pregunta."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(..., min_length=1, max_length=80)
+    sort_order: int
+    type: QuestionType
+    text: str = Field(..., min_length=1)
+    image_url: str = Field(..., min_length=1)
+    points: int = Field(0, ge=0)
+    time_limit_seconds: int = Field(..., gt=0)
+    correct_free_text: Optional[str] = None
+    options: Optional[List[AnswerOptionPayload]] = None
+
+
 class Player(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -156,6 +188,8 @@ class PlayerState(BaseModel):
     answer_time_left_ms: Optional[int] = None
     last_answer_correct: Optional[bool] = None
     last_answer: Optional[str] = None
+    intermission_eliminated_count: Optional[int] = None
+    intermission_alive_count: Optional[int] = None
 
 
 class AnswerRecord(BaseModel):

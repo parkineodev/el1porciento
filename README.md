@@ -1,6 +1,6 @@
 # El 1% - Backend FastAPI
 
-Backend ligero para jugar con amigos al estilo del programa **“El 1%”**. Usa FastAPI, guarda preguntas en YAML y el estado de las partidas en ficheros JSON (sin base de datos).
+Backend ligero para jugar con amigos al estilo del programa **“El 1%”**. Usa FastAPI; tanto las preguntas como el estado de las partidas se guardan en Postgres (la misma base de Supabase que usa la web de la boda), vía `DATABASE_URL`.
 
 # Despliegue
 
@@ -37,6 +37,7 @@ Esto expone la API en `http://localhost:8000` y los recursos estáticos en `/sta
 - `http://localhost:8000/` — Pantalla de jugador (se une con código y nombre, responde, usa comodín).
 - `http://localhost:8000/presenter` — Consola del presentador (crear/cargar partida, abrir/cerrar preguntas, ver resultados).
 - `http://localhost:8000/screen` — Pantalla grande (muestra pregunta y conteo de vivos).
+- `http://localhost:8000/admin` — Admin de preguntas (crear/editar/borrar, con subida de imágenes). Pide la contraseña de `ADMIN_PASSWORD`.
 
 ## Estructura
 
@@ -46,22 +47,33 @@ el1porciento/
 │  ├─ __init__.py
 │  ├─ main.py            # FastAPI + rutas
 │  ├─ models.py          # Modelos Pydantic y enums
-│  ├─ question_store.py  # Carga y valida preguntas YAML
-│  ├─ game_store.py      # Gestión de partidas y persistencia JSON
+│  ├─ db.py               # Pool de conexión a Postgres, compartido
+│  ├─ question_store.py  # Preguntas: lectura/CRUD contra Postgres
+│  ├─ game_store.py      # Gestión de partidas (también en Postgres)
 │  └─ data/
-│     ├─ questions.yaml  # Preguntas de ejemplo
-│     └─ games/          # Partidas guardadas (se crean en runtime)
+│     └─ games/          # Ya no se usa en producción (quedó de la versión con ficheros JSON)
 ├─ static/
-│  └─ images/            # Imágenes para preguntas y opciones
+│  ├─ admin.html          # Admin de preguntas
+│  └─ images/            # Imágenes de las preguntas de ejemplo originales
 ├─ requirements.txt
 └─ README.md
 ```
+
+## Variables de entorno
+
+- `DATABASE_URL` — cadena de conexión a Postgres/Supabase (obligatoria).
+- `ADMIN_PASSWORD` — contraseña compartida para `/admin` y sus endpoints
+  (obligatoria para poder entrar al admin de preguntas).
 
 ## Endpoints principales (resumen)
 
 - `GET  /api/health` — Ping.
 - `GET  /api/questions` — Lista todas las preguntas (`?include_correct=true` para ver soluciones).
 - `GET  /api/questions/first` y `/api/questions/{id}/next` — Navegación por orden.
+- `GET  /api/images/{id}` — Sirve una imagen subida desde el admin.
+- `POST /api/admin/login` — Valida `ADMIN_PASSWORD`.
+- `GET/POST/PUT/DELETE /api/admin/questions[/{id}]` — CRUD de preguntas (requiere header `X-Admin-Password`).
+- `POST /api/admin/images` — Sube una imagen (multipart) y devuelve su URL (requiere header `X-Admin-Password`).
 - `POST /api/games` — Crea partida (devuelve código y token de presentador).
 - `GET  /api/games/{game_id}/presenter/state?presenter_token=...` — Estado para presentador.
 - `GET  /api/games/{game_id}/screen/state` — Estado para la pantalla grande.
@@ -75,14 +87,9 @@ el1porciento/
 - `GET  /api/games/{game_id}/questions/{question_id}/results` — Resultados de una pregunta.
 - `POST /api/games/{game_id}/finish` — Marca partida como terminada.
 
-Los JSON de las partidas se guardan en `app/data/games/` (ignorados por Git). Las imágenes para preguntas y opciones viven en `static/images/...`.
-
-## Datos de ejemplo
-
-`app/data/questions.yaml` incluye varias preguntas de muestra (opción múltiple y respuesta libre). Las imágenes SVG asociadas están bajo `static/images/preguntas/` y `static/images/opciones/`.
+Las partidas se guardan en la tabla `elporciento_games` de Postgres. Las preguntas viven en `elporciento_questions` (y sus imágenes subidas, en `elporciento_question_images`); ambas tablas las crea una migración del repo de la wedding-app, no esta app. Las imágenes originales de las preguntas de ejemplo siguen sirviéndose desde `static/images/...`.
 
 ## Notas
 
-- No hay autenticación compleja: se usan *tokens* simples para presentador y jugadores.
-- Toda la lógica de comodín, eliminación y conteo de respuestas se almacena en JSON para poder mover la carpeta a otra máquina sin perder partidas.
-- Si editas el YAML de preguntas, reinicia el servidor para recargar o extiende `QuestionStore` para añadir recarga en caliente.
+- Autenticación mínima: tokens simples para presentador y jugadores, y una contraseña compartida (`ADMIN_PASSWORD`) para el admin de preguntas — nada de sesiones ni JWT.
+- Editar preguntas desde `/admin` se aplica al momento (no hace falta reiniciar el servidor): cada creación/edición/borrado llama a `QuestionStore.reload()`.

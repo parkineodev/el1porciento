@@ -1,4 +1,4 @@
 fastapi
 uvicorn[standard]
-pyyaml
+python-multipart
 psycopg[binary,pool]

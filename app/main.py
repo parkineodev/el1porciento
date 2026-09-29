@@ -1,14 +1,18 @@
 from __future__ import annotations
 
+import os
+import secrets
 from pathlib import Path
 from typing import Optional
+from uuid import UUID
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
+from .db import get_pool
 from .game_store import GameStore
 from .models import (
     AnswerRecord,
@@ -17,6 +21,7 @@ from .models import (
     PlayerForPresenter,
     PlayerState,
     PlayerStatus,
+    QuestionPayload,
     QuestionPublic,
     QuestionResult,
     QuestionType,
@@ -25,16 +30,17 @@ from .models import (
 from .question_store import QuestionStore
 
 BASE_DIR = Path(__file__).resolve().parent
-DATA_DIR = BASE_DIR / "data"
-QUESTIONS_PATH = DATA_DIR / "questions.yaml"
 STATIC_DIR = BASE_DIR.parent / "static"
 
-question_store = QuestionStore(QUESTIONS_PATH)
+MAX_IMAGE_BYTES = 3 * 1024 * 1024
+ALLOWED_IMAGE_TYPES = {"image/svg+xml", "image/png", "image/jpeg", "image/webp"}
+
+question_store = QuestionStore()
 game_store = GameStore()
 
 app = FastAPI(
     title="El 1% - Backend",
-    description="API para partidas tipo \"El 1%\" con preguntas en YAML y partidas en Postgres.",
+    description="API para partidas tipo \"El 1%\" con preguntas y partidas en Postgres.",
     version="0.1.0",
 )
 
@@ -143,6 +149,104 @@ def get_first_question(include_correct: bool = Query(False)) -> QuestionPublic:
 def get_next_question(question_id: str, include_correct: bool = Query(False)) -> QuestionPublic:
     q = question_store.get_next_after(question_id)
     return q.to_public(include_correct=include_correct)
+
+
+def _require_admin(x_admin_password: str = Header(...)) -> None:
+    expected = os.environ.get("ADMIN_PASSWORD")
+    if not expected:
+        raise HTTPException(
+            status_code=503, detail="ADMIN_PASSWORD no está configurada en el servidor"
+        )
+    if not secrets.compare_digest(x_admin_password, expected):
+        raise HTTPException(status_code=401, detail="Contraseña incorrecta")
+
+
+class AdminLoginRequest(BaseModel):
+    password: str
+
+
+@app.post("/api/admin/login")
+def admin_login(payload: AdminLoginRequest) -> dict:
+    expected = os.environ.get("ADMIN_PASSWORD")
+    if not expected:
+        raise HTTPException(
+            status_code=503, detail="ADMIN_PASSWORD no está configurada en el servidor"
+        )
+    if not secrets.compare_digest(payload.password, expected):
+        raise HTTPException(status_code=401, detail="Contraseña incorrecta")
+    return {"ok": True}
+
+
+@app.get("/api/admin/questions", dependencies=[Depends(_require_admin)])
+def admin_list_questions() -> list[QuestionPublic]:
+    return [q.to_public(include_correct=True) for q in question_store.all_questions()]
+
+
+@app.post("/api/admin/questions", dependencies=[Depends(_require_admin)])
+def admin_create_question(payload: QuestionPayload) -> QuestionPublic:
+    question = question_store.create(payload)
+    return question.to_public(include_correct=True)
+
+
+@app.put("/api/admin/questions/{question_id}", dependencies=[Depends(_require_admin)])
+def admin_update_question(question_id: str, payload: QuestionPayload) -> QuestionPublic:
+    question = question_store.update(question_id, payload)
+    return question.to_public(include_correct=True)
+
+
+@app.delete("/api/admin/questions/{question_id}", dependencies=[Depends(_require_admin)])
+def admin_delete_question(question_id: str) -> dict:
+    question_store.delete(question_id)
+    return {"ok": True}
+
+
+@app.post("/api/admin/images", dependencies=[Depends(_require_admin)])
+async def admin_upload_image(file: UploadFile) -> dict:
+    if file.content_type not in ALLOWED_IMAGE_TYPES:
+        raise HTTPException(status_code=400, detail="Tipo de imagen no admitido")
+
+    data = await file.read()
+    if len(data) > MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=400, detail="La imagen pesa demasiado (máx. 3 MB)")
+
+    pool = get_pool()
+    with pool.connection() as conn:
+        row = conn.execute(
+            """
+            insert into public.elporciento_question_images (content_type, data)
+            values (%s, %s)
+            returning id
+            """,
+            (file.content_type, data),
+        ).fetchone()
+
+    image_id = row[0]
+    return {"id": str(image_id), "url": f"/api/images/{image_id}"}
+
+
+@app.get("/api/images/{image_id}")
+def get_image(image_id: str) -> Response:
+    try:
+        UUID(image_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Imagen no encontrada")
+
+    pool = get_pool()
+    with pool.connection() as conn:
+        row = conn.execute(
+            "select content_type, data from public.elporciento_question_images where id = %s",
+            (image_id,),
+        ).fetchone()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Imagen no encontrada")
+
+    content_type, data = row
+    return Response(
+        content=bytes(data),
+        media_type=content_type,
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+    )
 
 
 @app.post("/api/games")
@@ -358,6 +462,14 @@ def player_state(game_id: str, player_token: str = Query(...)) -> PlayerState:
         answers = game.answers.get(game.current_question_id, {})
         has_answered = player_id in answers
 
+    intermission_eliminated_count = None
+    intermission_alive_count = None
+    if game.phase == GamePhase.INTERMISSION:
+        result = game.question_results.get(game.current_question_id) if game.current_question_id else None
+        result_dict = result if isinstance(result, dict) else (result.model_dump() if result else {})
+        intermission_eliminated_count = len(result_dict.get("players_wrong") or [])
+        intermission_alive_count = len(game.alive_players())
+
     return PlayerState(
         game_id=game.id,
         phase=game.phase,
@@ -376,6 +488,8 @@ def player_state(game_id: str, player_token: str = Query(...)) -> PlayerState:
         answer_time_left_ms=game_store.answer_time_left_ms(game),
         last_answer_correct=player.last_answer_correct,
         last_answer=player.last_answer,
+        intermission_eliminated_count=intermission_eliminated_count,
+        intermission_alive_count=intermission_alive_count,
     )
 
 
@@ -462,3 +576,8 @@ def serve_presenter() -> FileResponse:
 @app.get("/screen", include_in_schema=False)
 def serve_screen() -> FileResponse:
     return _serve_static_file("screen.html")
+
+
+@app.get("/admin", include_in_schema=False)
+def serve_admin() -> FileResponse:
+    return _serve_static_file("admin.html")

@@ -33,7 +33,6 @@
   <main class="layout">
     <div class="hero">
       <p class="hint">Ingresa el código que te dé el presentador y tu nombre. Cuando abra la pregunta, podrás responder, usar tu comodín o plantarte.</p>
-      <p class="hint"><strong>Reglas:</strong> Acumulas los puntos de cada pregunta si aciertas. Si fallas en cualquier momento pierdes y tu puntuación se reduce al 50%. Puedes plantarte en las oportunidades indicadas: la primera mantiene tu puntuación, la segunda la multiplica por 1.5. Si te plantas, sales del juego con esos puntos. Si sigues hasta el final y ganas, sumas los puntos de la última pregunta.</p>
     </div>
 
     <section id="joinSection" class="card">
@@ -414,6 +413,25 @@
       const cashoutBoostOpen = state.can_cashout_boost && state.status === 'alive';
       const cashoutWindowOpen = (cashoutKeepOpen || cashoutBoostOpen) && state.status === 'alive';
 
+      if (state.phase === 'intermission') {
+        currentQuestionId = null;
+        questionTitle.textContent = 'Resumen de la ronda';
+        questionText.textContent = '';
+        questionImage.style.display = 'none';
+        optionsContainer.innerHTML = `
+          <div class="stat-big">
+            <div class="stat-big-number">${state.intermission_eliminated_count ?? 0}</div>
+            <div class="stat-big-label">eliminados en esta ronda</div>
+          </div>
+        `;
+        freeTextContainer.style.display = 'none';
+        jokerBtn.disabled = true;
+        questionCard.style.pointerEvents = 'auto';
+        hideOverlay();
+        actionHint.textContent = `Quedan ${state.intermission_alive_count ?? '—'} en juego. Espera a que el presentador abra la siguiente pregunta.`;
+        return;
+      }
+
       if (!state.current_question || cashoutWindowOpen) {
         questionTitle.textContent = cashoutWindowOpen ? '¿Te plantas?' : 'Esperando pregunta...';
         questionText.textContent = cashoutWindowOpen
@@ -439,6 +457,7 @@
         currentQuestionId = q.id;
         freeTextDraft = '';
         autoSubmittedFor = null;
+        questionCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
       questionTitle.textContent = `Pregunta ${q.order}`;
       questionText.textContent = q.text;

@@ -1,38 +1,16 @@
 from __future__ import annotations
 
-import os
 import secrets
 import string
 import threading
 import time
 from typing import Dict, List, Optional, Tuple
-from urllib.parse import unquote, urlparse
 
 from fastapi import HTTPException
 from fastapi.encoders import jsonable_encoder
-from psycopg.conninfo import make_conninfo
 from psycopg.types.json import Jsonb
-from psycopg_pool import ConnectionPool
 
-
-def _build_conninfo(database_url: str) -> str:
-    """Convierte la URL de conexión en un conninfo con el puerto ya como
-    entero de Python. Si se deja el puerto dentro de la URL (p. ej.
-    ":6543"), en contenedores mínimos como los de Render (sin /etc/services
-    completo) getaddrinfo() puede intentar resolverlo como nombre de
-    servicio en vez de número y fallar con "Servname not supported for
-    ai_socktype" -- pasarlo ya parseado como int evita esa ruta de código.
-    """
-    parsed = urlparse(database_url)
-
-    return make_conninfo(
-        dbname=(parsed.path or "/postgres").lstrip("/") or "postgres",
-        host=parsed.hostname,
-        password=unquote(parsed.password) if parsed.password else None,
-        port=parsed.port or 5432,
-        user=unquote(parsed.username) if parsed.username else None,
-    )
-
+from .db import get_pool
 from .models import (
     AnswerRecord,
     GamePhase,
@@ -76,14 +54,11 @@ class GameStore:
     """
 
     def __init__(self, database_url: Optional[str] = None):
-        database_url = database_url or os.environ.get("DATABASE_URL")
-        if not database_url:
-            raise RuntimeError(
-                "DATABASE_URL no está configurada (cadena de conexión a Postgres/Supabase)"
-            )
-        self._pool = ConnectionPool(
-            _build_conninfo(database_url), min_size=1, max_size=5, kwargs={"autocommit": True}
-        )
+        # `database_url` se mantiene como parámetro por compatibilidad, pero
+        # ya no se usa para abrir un pool propio -- GameStore y
+        # QuestionStore comparten el mismo pool (ver app/db.py).
+        del database_url
+        self._pool = get_pool()
         self._games: Dict[str, GameSession] = {}
         self._code_index: Dict[str, str] = {}
         self._locks: Dict[str, threading.Lock] = {}

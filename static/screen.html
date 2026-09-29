@@ -175,6 +175,7 @@
         questionText.textContent = '';
         const aliveList = (state.intermission_alive || []).slice().sort((a, b) => b.score - a.score);
         const eliminatedList = (state.intermission_eliminated || []).slice().sort((a, b) => b.score - a.score);
+        const eliminatedThisRound = eliminatedList.filter((p) => p.last_eliminated).length;
         const renderRow = (player, status) => `
           <div class="status-row" style="justify-content:space-between;align-items:center;">
             <div><strong>${player.name}</strong> <span class="hint">${status}</span></div>
@@ -189,6 +190,10 @@
         resultsCard.style.display = 'block';
         resultsCard.querySelector('h2').textContent = 'Recuento de partida';
         resultsBody.innerHTML = `
+          <div class="stat-big">
+            <div class="stat-big-number">${eliminatedThisRound}</div>
+            <div class="stat-big-label">eliminados en esta ronda</div>
+          </div>
           <h3>Siguen en juego</h3>
           ${aliveList.length ? aliveList.map(p => renderRow(p, 'Vivo')).join('') : '<p class="hint">—</p>'}
           <h3>Eliminados / Plantados</h3>

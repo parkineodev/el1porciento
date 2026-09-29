@@ -350,6 +350,24 @@ header {
   margin-bottom: 12px;
 }
 
+.stat-big {
+  text-align: center;
+  padding: 18px 0;
+}
+
+.stat-big .stat-big-number {
+  font-size: 72px;
+  font-weight: 700;
+  line-height: 1;
+  color: #ef4444;
+}
+
+.stat-big .stat-big-label {
+  color: var(--muted);
+  font-size: 16px;
+  margin-top: 6px;
+}
+
 .overlay.success .icon {
   color: #22c55e;
 }
