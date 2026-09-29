@@ -133,6 +133,20 @@ def list_questions(include_correct: bool = Query(False)) -> list[QuestionPublic]
     return [q.to_public(include_correct=include_correct) for q in question_store.all_questions()]
 
 
+@app.get("/api/image-manifest")
+def image_manifest() -> dict:
+    # Solo las URLs, sin textos: los móviles precargan las imágenes al
+    # unirse sin poder ver las preguntas por adelantado.
+    urls: list[str] = []
+    for q in question_store.all_questions():
+        if q.image:
+            urls.append(q.image)
+        for opt in q.options or []:
+            if opt.image:
+                urls.append(opt.image)
+    return {"urls": list(dict.fromkeys(urls))}
+
+
 @app.get("/api/questions/{question_id}")
 def get_question(question_id: str, include_correct: bool = Query(False)) -> QuestionPublic:
     q = question_store.get_by_id(question_id)

@@ -9,6 +9,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/styles.css">
   <script src="https://cdn.jsdelivr.net/npm/qrious@4.0.2/dist/qrious.min.js"></script>
+  <script src="/static/image-preload.js"></script>
 </head>
 <body>
   <header>
@@ -97,6 +98,7 @@
       gameIdInput.value = gameId;
       if (poll) clearInterval(poll);
       if (gameId) {
+        ImagePreloader.preloadAll();
         fetchState();
         poll = setInterval(fetchState, 1400);
       }
@@ -225,7 +227,7 @@
       }
 
       if (q.image) {
-        questionImage.src = q.image;
+        questionImage.src = ImagePreloader.src(q.image);
         questionImage.alt = q.text;
         questionImage.style.display = 'block';
       } else {
@@ -239,7 +241,7 @@
           card.className = 'option-card';
           card.style.cursor = 'default';
           card.innerHTML = `
-            ${opt.image ? `<img src="${opt.image}" alt="${opt.text || opt.id}">` : ''}
+            ${opt.image ? `<img src="${ImagePreloader.src(opt.image)}" alt="${opt.text || opt.id}">` : ''}
             <div style="display:flex;justify-content:space-between;align-items:center;">
               <div>
                 <strong>${opt.text || ''}</strong>

@@ -88,11 +88,13 @@
             <button class="btn secondary" id="cashoutBoostBtn" type="button">Plantarse x1.5</button>
           </div>
           <p class="hint" id="actionHint">Solo se puede responder cuando la pregunta está abierta.</p>
+          <p class="hint" id="preloadHint" style="display:none;"></p>
         </div>
       </div>
     </section>
   </main>
 
+  <script src="/static/image-preload.js"></script>
   <script>
     const overlay = document.getElementById('overlay');
     const overlayIcon = document.getElementById('overlayIcon');
@@ -195,6 +197,13 @@
       joinSection.style.display = 'none';
       gameSection.style.display = 'grid';
       resetBtn.style.display = 'inline-flex';
+      const preloadHint = document.getElementById('preloadHint');
+      ImagePreloader.preloadAll((done, total) => {
+        if (!total) return;
+        preloadHint.style.display = 'block';
+        preloadHint.textContent =
+          done < total ? `Descargando imágenes del juego… ${done}/${total}` : 'Imágenes del juego listas ✔';
+      });
     }
 
     async function joinGame(code, name, externalRef) {
@@ -471,7 +480,7 @@
         usualCorrectHint.style.display = 'none';
       }
       if (q.image) {
-        questionImage.src = q.image;
+        questionImage.src = ImagePreloader.src(q.image);
         questionImage.alt = q.text;
         questionImage.style.display = 'block';
       } else {
@@ -509,7 +518,7 @@
           card.className = 'option-card';
           card.disabled = !canAnswerNow;
           card.innerHTML = `
-            ${opt.image ? `<img src="${opt.image}" alt="${opt.text || opt.id}">` : ''}
+            ${opt.image ? `<img src="${ImagePreloader.src(opt.image)}" alt="${opt.text || opt.id}">` : ''}
             <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
               <div>
                 <strong>${(opt.text || '').replace(/</g,'&lt;')}</strong>
