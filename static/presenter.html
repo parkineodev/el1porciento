@@ -324,7 +324,7 @@
         <p class="hint">Respuestas totales: ${resData.total_answers}</p>
         <div class="status-row">${counts || '<span class="hint">Sin opciones.</span>'}</div>
         <p class="hint">Correcta: ${resData.correct_option_id || resData.correct_free_text || 'N/A'}</p>
-        <p class="hint">Correctos: ${resData.players_correct.length} · Incorrectos: ${resData.players_wrong.length} · Comodín: ${resData.players_joker.length} · Acertó: ${resData.correct_percentage != null ? resData.correct_percentage + '%' : '—'}</p>
+        <p class="hint">Correctos: ${resData.players_correct.length} · Incorrectos: ${resData.players_wrong.length} · Comodín: ${resData.players_joker.length}</p>
         <p class="hint"><strong>Fallaron:</strong> ${wrongNames}</p>
         <p class="hint"><strong>Comodín:</strong> ${jokerNames}</p>
       `;

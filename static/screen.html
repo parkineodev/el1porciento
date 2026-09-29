@@ -255,9 +255,7 @@
         const correct = (res.players_correct_names || []).join(', ') || '—';
         const wrong = (res.players_wrong_names || []).join(', ') || '—';
         const joker = (res.players_joker_names || []).join(', ') || '—';
-        const pct = res.correct_percentage != null ? `${res.correct_percentage}%` : '—';
         resultsBody.innerHTML = `
-          <p class="hint"><strong>Acertó:</strong> ${pct}</p>
           <p class="hint"><strong>Correctos:</strong> ${correct}</p>
           <p class="hint"><strong>Eliminados esta ronda:</strong> ${wrong}</p>
           <p class="hint"><strong>Comodín:</strong> ${joker}</p>
