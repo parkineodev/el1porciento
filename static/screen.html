@@ -13,6 +13,8 @@
   <script src="/static/image-preload.js"></script>
 </head>
 <body class="theme-1p screen">
+  <audio id="questionMusic" src="/static/audio/pregunta.mp3" preload="auto"></audio>
+  <button class="sound-btn" id="soundBtn" type="button">Activar sonido</button>
   <header>
     <div class="flex">
       <h1>El 1% · Pantalla grande</h1>
@@ -136,6 +138,7 @@
         if (!res.ok) throw new Error('No se pudo cargar estado');
         const state = await res.json();
         render(state);
+        syncMusic(state);
       } catch (e) {
         questionText.textContent = e.message;
       }
@@ -467,6 +470,72 @@
       };
       requestAnimationFrame(tick);
     }
+
+    // ---------- Música mientras está abierto el tiempo de respuesta ----------
+    // La música tiene que terminar a la vez que el tiempo: si hay más tiempo
+    // que música, empieza más tarde; si hay menos, empieza por la mitad.
+
+    const music = document.getElementById('questionMusic');
+    const soundBtn = document.getElementById('soundBtn');
+    const MUSIC_DRIFT_MS = 400;
+    let musicStartTimer = null;
+    let lastMusicState = null;
+
+    function stopMusic() {
+      clearTimeout(musicStartTimer);
+      musicStartTimer = null;
+      if (!music.paused) music.pause();
+    }
+
+    function playMusicFrom(seconds) {
+      music.currentTime = Math.max(0, seconds);
+      music.play().then(
+        () => soundBtn.classList.add('hidden'),
+        () => soundBtn.classList.remove('hidden'),
+      );
+    }
+
+    function syncMusic(state) {
+      lastMusicState = state;
+      const remainingMs = state.phase === 'answering' ? state.answer_time_left_ms : null;
+      if (!remainingMs || remainingMs <= 0) {
+        stopMusic();
+        return;
+      }
+      const durationMs = music.duration * 1000;
+      if (!Number.isFinite(durationMs)) return; // se reintenta al cargar el audio
+
+      if (remainingMs > durationMs) {
+        // Más tiempo que música: esperar y arrancar desde el principio.
+        if (!music.paused) music.pause();
+        clearTimeout(musicStartTimer);
+        musicStartTimer = setTimeout(() => playMusicFrom(0), remainingMs - durationMs);
+        return;
+      }
+
+      clearTimeout(musicStartTimer);
+      const expected = (durationMs - remainingMs) / 1000;
+      if (music.paused || Math.abs(music.currentTime - expected) * 1000 > MUSIC_DRIFT_MS) {
+        playMusicFrom(expected);
+      }
+    }
+
+    music.addEventListener('loadedmetadata', () => {
+      if (lastMusicState) syncMusic(lastMusicState);
+    });
+
+    // Los navegadores no dejan sonar audio hasta que se toca la página una vez.
+    soundBtn.addEventListener('click', () => {
+      music.muted = true;
+      music.play().then(() => {
+        music.pause();
+        music.muted = false;
+        soundBtn.classList.add('hidden');
+        if (lastMusicState) syncMusic(lastMusicState);
+      }, () => {
+        music.muted = false;
+      });
+    });
 
     loadBtn.addEventListener('click', () => setGameId(gameIdInput.value));
     saveBtn.addEventListener('click', () => {

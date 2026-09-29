@@ -869,3 +869,23 @@ body.theme-1p.screen[data-phase="finished"] #resultsCard {
 .theme-1p .recount.is-final .rc-row.qualified {
   box-shadow: 0 0 22px rgba(245, 200, 66, 0.45);
 }
+
+/* Botón para desbloquear el audio (los navegadores lo exigen) */
+.theme-1p .sound-btn {
+  position: fixed;
+  top: 16px;
+  left: 16px;
+  z-index: 30;
+  padding: 10px 18px;
+  border: 2px solid var(--gold-light);
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--panel-dark), var(--panel-indigo));
+  color: var(--text-1p);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.theme-1p .sound-btn.hidden {
+  display: none;
+}
