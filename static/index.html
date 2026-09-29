@@ -457,7 +457,6 @@
         currentQuestionId = q.id;
         freeTextDraft = '';
         autoSubmittedFor = null;
-        questionCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
       questionTitle.textContent = `Pregunta ${q.order}`;
       questionText.textContent = q.text;
@@ -467,6 +466,20 @@
         questionImage.style.display = 'block';
       } else {
         questionImage.style.display = 'none';
+      }
+      if (isNewQuestion) {
+        // Al título/badges de la cabecera de la tarjeta les sobra tanto
+        // espacio con la barra de tiempo que, si se hace scroll hasta el
+        // borde de la tarjeta entera, la pregunta en sí (imagen + texto)
+        // se queda fuera de la pantalla en móvil. Se espera un frame para
+        // que el navegador ya haya colocado la imagen/texto nuevos antes
+        // de medir dónde hacer scroll.
+        requestAnimationFrame(() => {
+          (q.image ? questionImage : questionText).scrollIntoView({
+            behavior: 'smooth',
+            block: 'start',
+          });
+        });
       }
 
       const canAnswerNow = state.can_answer && !state.has_answered && state.alive && !isCashOut && !cashoutWindowOpen;
