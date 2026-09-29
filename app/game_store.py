@@ -337,6 +337,13 @@ class GameStore:
                 a for a in answers.values() if not a.used_joker and (a.selected_option_id or a.text_answer)
             ]
 
+            # Porcentaje de acierto sobre quien participó en la ronda (deja
+            # fuera a quien usó comodín, que no arriesga acierto/fallo).
+            participants = len(players_correct) + len(players_wrong)
+            correct_percentage = (
+                round(len(players_correct) / participants * 100, 1) if participants else None
+            )
+
             game.answers[question.id] = answers
             game.phase = GamePhase.RESULTS
             game.answer_window_started_at = None
@@ -354,6 +361,7 @@ class GameStore:
                 players_wrong_names=players_wrong_names,
                 players_joker_names=players_joker_names,
                 players_correct_names=players_correct_names,
+                correct_percentage=correct_percentage,
             )
             self._save(game)
             return game.question_results[question.id]

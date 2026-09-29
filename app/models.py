@@ -194,6 +194,7 @@ class PlayerState(BaseModel):
     last_answer: Optional[str] = None
     intermission_eliminated_count: Optional[int] = None
     intermission_alive_count: Optional[int] = None
+    correct_percentage: Optional[float] = None
 
 
 class AnswerRecord(BaseModel):
@@ -221,6 +222,10 @@ class QuestionResult(BaseModel):
     players_wrong_names: List[str] = Field(default_factory=list)
     players_joker_names: List[str] = Field(default_factory=list)
     players_correct_names: List[str] = Field(default_factory=list)
+    # Porcentaje de jugadores que la acertaron, sobre los que la
+    # respondieron (sin contar a quien usó comodín). None si nadie la
+    # respondió, para no mostrar un 0% engañoso.
+    correct_percentage: Optional[float] = None
 
 
 class RosterEntry(BaseModel):

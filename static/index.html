@@ -553,6 +553,8 @@
         showOverlay('info', 'Respuesta enviada', 'Espera a que acabe el tiempo');
       } else if (state.phase === 'results') {
         questionCard.style.pointerEvents = 'none';
+        const pctText =
+          state.correct_percentage != null ? ` Acertó el ${state.correct_percentage}%.` : '';
         if (state.alive) {
           const msg =
             state.last_answer_correct === true
@@ -560,9 +562,13 @@
               : state.last_answer_correct === null || state.last_answer_correct === undefined
               ? 'Comodín usado, sigues vivo'
               : 'Sigues vivo';
-          showOverlay('success', '¡Sigues en juego!', msg);
+          showOverlay('success', '¡Sigues en juego!', msg + pctText);
         } else {
-          showOverlay('danger', 'Respuesta incorrecta', `Has sido eliminado. Puntos: ${Math.round(state.score)}`);
+          showOverlay(
+            'danger',
+            'Respuesta incorrecta',
+            `Has sido eliminado. Puntos: ${Math.round(state.score)}.${pctText}`,
+          );
         }
       } else {
         questionCard.style.pointerEvents = 'auto';
