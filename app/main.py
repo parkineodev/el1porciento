@@ -484,11 +484,13 @@ def player_state(game_id: str, player_token: str = Query(...)) -> PlayerState:
 
     intermission_eliminated_count = None
     intermission_alive_count = None
+    intermission_joker_count = None
     if game.phase == GamePhase.INTERMISSION:
         result = game.question_results.get(game.current_question_id) if game.current_question_id else None
         result_dict = result if isinstance(result, dict) else (result.model_dump() if result else {})
         intermission_eliminated_count = len(result_dict.get("players_wrong") or [])
         intermission_alive_count = len(game.alive_players())
+        intermission_joker_count = len(result_dict.get("players_joker") or [])
 
     return PlayerState(
         game_id=game.id,
@@ -510,6 +512,9 @@ def player_state(game_id: str, player_token: str = Query(...)) -> PlayerState:
         last_answer=player.last_answer,
         intermission_eliminated_count=intermission_eliminated_count,
         intermission_alive_count=intermission_alive_count,
+        intermission_joker_count=intermission_joker_count,
+        alive_count=len(game.alive_players()),
+        total_players=game.total_players(),
     )
 
 

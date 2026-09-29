@@ -354,6 +354,12 @@ button.option-card:not(:disabled) {
   color: rgba(255, 255, 255, 0.8);
 }
 
+.theme-1p .stat-big .stat-big-sub {
+  margin-top: 10px;
+  font-size: clamp(14px, 1.6vw, 22px);
+  color: rgba(255, 255, 255, 0.65);
+}
+
 .theme-1p .overlay {
   background: rgba(20, 6, 4, 0.82);
 }
@@ -409,17 +415,78 @@ button.option-card:not(:disabled) {
   display: none;
 }
 
-/* La explicación inicial solo tiene sentido antes de unirse */
-body.theme-1p[data-phase] .hero {
-  display: none;
-}
-
 .theme-1p #questionText {
   font-size: clamp(17px, 4.4vw, 24px);
 }
 
 .theme-1p .option-card .opt-text {
   font-size: clamp(18px, 5vw, 28px);
+}
+
+.theme-1p .alive-count {
+  margin-left: auto;
+  font-size: 14px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.theme-1p .joker-btn {
+  width: 100%;
+  padding: 16px;
+  font-size: 18px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Solo aparece cuando se puede usar (pregunta abierta y comodín sin gastar) */
+.theme-1p .joker-btn:disabled {
+  display: none;
+}
+
+.theme-1p .cashout-row {
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.theme-1p .cashout-row .btn {
+  width: 100%;
+  padding: 16px 10px;
+  font-size: 16px;
+  border-color: var(--gold-light);
+  box-shadow: 0 0 22px rgba(245, 200, 66, 0.45);
+}
+
+/* Estado y avisos: en segundo plano, solo informativos */
+.theme-1p .info-strip {
+  margin-top: 4px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.theme-1p .info-strip .status-row {
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.theme-1p .info-strip .badge,
+.theme-1p .info-strip .badge.success,
+.theme-1p .info-strip .badge.danger {
+  padding: 0;
+  border: none;
+  background: none;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.theme-1p .info-strip .badge + .badge::before {
+  content: "·";
+  margin-right: 6px;
+}
+
+.theme-1p .info-strip .hint {
+  margin: 0 0 4px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.55);
 }
 
 .theme-1p #freeTextContainer .input {
@@ -434,6 +501,21 @@ body.theme-1p[data-phase] .hero {
 .theme-1p.screen header h1,
 .theme-1p.screen #timeBadge {
   display: none;
+}
+
+.theme-1p.screen #countsBadge {
+  padding: 10px 18px;
+  font-size: clamp(16px, 1.6vw, 26px);
+  font-weight: 800;
+  border: 2px solid var(--gold-light);
+}
+
+.theme-1p.screen #questionText:empty {
+  display: none;
+}
+
+.theme-1p.screen .timer-medal .timer-medal-label {
+  font-size: clamp(18px, 2.2vw, 34px);
 }
 
 .theme-1p.screen .layout {

@@ -201,6 +201,9 @@ class PlayerState(BaseModel):
     last_answer: Optional[str] = None
     intermission_eliminated_count: Optional[int] = None
     intermission_alive_count: Optional[int] = None
+    intermission_joker_count: Optional[int] = None
+    alive_count: Optional[int] = None
+    total_players: Optional[int] = None
 
 
 class AnswerRecord(BaseModel):

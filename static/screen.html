@@ -58,7 +58,7 @@
       <span class="badge timer-big" id="timeBadge">—</span>
       <div class="timer-medal" id="timerBar" style="display:none;">
         <div class="timer-fill" id="timerFill"></div>
-        <div class="timer-medal-label"><span>1%</span></div>
+        <div class="timer-medal-label"><span id="medalLabel">1%</span></div>
       </div>
     </section>
 
@@ -88,6 +88,7 @@
     const resultsBody = document.getElementById('resultsBody');
     const qrCanvas = document.getElementById('qrCanvas');
     const joinLink = document.getElementById('joinLink');
+    const medalLabel = document.getElementById('medalLabel');
     let qr;
 
     const urlGameId = new URLSearchParams(window.location.search).get('game_id');
@@ -150,7 +151,7 @@
       document.body.dataset.phase = state.phase;
       phaseBadge.textContent = state.phase.toUpperCase();
       codeBadge.textContent = `Código: ${state.code || '—'}`;
-      countsBadge.textContent = `${state.alive_count} vivos · ${state.total_players} jugadores`;
+      countsBadge.textContent = `${state.alive_count} de ${state.total_players} en pie`;
       if (state.code) {
         const url = `${window.location.origin}/?code=${encodeURIComponent(state.code)}`;
         // location.origin siempre da el dominio en su forma ASCII/punycode
@@ -207,6 +208,7 @@
           <div class="stat-big">
             <div class="stat-big-number">${eliminatedThisRound}</div>
             <div class="stat-big-label">eliminados en esta ronda</div>
+            <div class="stat-big-sub">${(state.last_result?.players_joker || []).length} han usado comodín</div>
           </div>
           <h3>Siguen en juego</h3>
           ${aliveList.length ? aliveList.map(p => renderRow(p, 'Vivo')).join('') : '<p class="hint">—</p>'}
@@ -219,17 +221,20 @@
       resultsCard.style.display = 'none';
       const q = state.current_question;
       questionTitle.textContent = q.text;
-      questionText.textContent =
+      questionText.textContent = '';
+      // Como en el programa: el medallón de la esquina muestra el % de gente
+      // que suele acertarla (y el anillo hace de temporizador).
+      medalLabel.textContent =
         q.usual_correct_percentage != null
-          ? `Normalmente la acierta el ${q.usual_correct_percentage}% de la gente.`
-          : '';
+          ? `${String(q.usual_correct_percentage).replace('.', ',')}%`
+          : '1%';
+      timerBar.style.display = 'block';
       if (state.phase === 'answering' && timeLeft !== null) {
         const total = (q.time_limit_seconds || 0) * 1000 || timeLeft;
-        timerBar.style.display = 'block';
         startTimer(timeLeft, total);
       } else {
-        timerBar.style.display = 'none';
         stopTimer();
+        timerBar.style.setProperty('--pct', 100);
         timeBadge.textContent = q.time_limit_seconds ? `Tiempo: ${q.time_limit_seconds}s` : '—';
       }
 

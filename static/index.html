@@ -32,10 +32,6 @@
   </header>
 
   <main class="layout">
-    <div class="hero">
-      <p class="hint">Ingresa el código que te dé el presentador y tu nombre. Cuando abra la pregunta, podrás responder, usar tu comodín o plantarte.</p>
-    </div>
-
     <section id="joinSection" class="card">
       <div class="section-title">
         <h2>Unirse a la partida</h2>
@@ -53,14 +49,14 @@
       <p class="hint" id="joinHint"></p>
     </section>
 
-    <section id="gameSection" class="grid two" style="display:none;">
+    <section id="gameSection" style="display:none;">
       <div class="question-stage" id="questionCard">
         <div class="stage-top">
           <div class="timer-medal" style="display:none;" id="timerBar">
             <div class="timer-fill" id="timerFill"></div>
             <div class="timer-medal-label"><span>1%</span></div>
           </div>
-          <button id="jokerBtn" class="btn secondary" style="padding:8px 12px;">Usar comodín</button>
+          <span class="alive-count" id="aliveCountBadge"></span>
           <span class="badge" id="phaseBadge">LOBBY</span>
         </div>
         <div class="panel question-panel">
@@ -74,20 +70,15 @@
           <input id="freeTextInput" class="input" placeholder="Escribe tu respuesta">
           <button class="btn" type="button" id="sendTextBtn">Enviar</button>
         </div>
-        <div class="status-row">
-          <span class="badge" id="aliveBadge">Estado: —</span>
-          <span class="badge" id="answerBadge">Respuesta: —</span>
+        <div class="cashout-row" id="cashoutRow" style="display:none;">
+          <button class="btn" id="cashoutKeepBtn" type="button">Plantarse (mantener)</button>
+          <button class="btn" id="cashoutBoostBtn" type="button">Plantarse x1.5</button>
         </div>
-      </div>
-
-      <div class="card">
-        <div class="section-title">
-          <h3>Acciones</h3>
-        </div>
-        <div class="grid" style="gap:10px;">
-          <div class="form-row">
-            <button class="btn secondary" id="cashoutKeepBtn" type="button">Plantarse (mantener)</button>
-            <button class="btn secondary" id="cashoutBoostBtn" type="button">Plantarse x1.5</button>
+        <button id="jokerBtn" class="btn joker-btn" type="button">Usar comodín</button>
+        <div class="info-strip">
+          <div class="status-row">
+            <span class="badge" id="aliveBadge">—</span>
+            <span class="badge" id="answerBadge">—</span>
           </div>
           <p class="hint" id="actionHint">Solo se puede responder cuando la pregunta está abierta.</p>
           <p class="hint" id="preloadHint" style="display:none;"></p>
@@ -127,6 +118,8 @@
     const resetBtn = document.getElementById('resetBtn');
     const questionCard = document.getElementById('questionCard');
     const cashoutKeepBtn = document.getElementById('cashoutKeepBtn');
+    const cashoutRow = document.getElementById('cashoutRow');
+    const aliveCountBadge = document.getElementById('aliveCountBadge');
     const cashoutBoostBtn = document.getElementById('cashoutBoostBtn');
     const codeInput = document.getElementById('codeInput');
     const nameInput = document.getElementById('nameInput');
@@ -416,7 +409,9 @@
         : state.alive
         ? 'Sigues en juego'
         : 'Eliminado';
-      aliveBadge.textContent = `Estado: ${aliveText}`;
+      aliveBadge.textContent = aliveText;
+      aliveCountBadge.textContent =
+        state.alive_count != null ? `${state.alive_count} de ${state.total_players} en pie` : '';
       aliveBadge.className = 'badge ' + (state.status === 'cashed_out' ? 'success' : state.alive ? 'success' : 'danger');
 
       answerBadge.textContent = state.has_answered ? 'Respuesta enviada' : 'Sin responder';
@@ -428,6 +423,9 @@
       const cashoutKeepOpen = state.can_cashout_keep && state.status === 'alive';
       const cashoutBoostOpen = state.can_cashout_boost && state.status === 'alive';
       const cashoutWindowOpen = (cashoutKeepOpen || cashoutBoostOpen) && state.status === 'alive';
+      cashoutKeepBtn.style.display = cashoutKeepOpen ? 'block' : 'none';
+      cashoutBoostBtn.style.display = cashoutBoostOpen ? 'block' : 'none';
+      cashoutRow.style.display = cashoutWindowOpen ? 'grid' : 'none';
 
       if (state.phase === 'intermission') {
         currentQuestionId = null;
@@ -439,6 +437,7 @@
           <div class="stat-big">
             <div class="stat-big-number">${state.intermission_eliminated_count ?? 0}</div>
             <div class="stat-big-label">eliminados en esta ronda</div>
+            <div class="stat-big-sub">${state.intermission_joker_count ?? 0} han usado comodín</div>
           </div>
         `;
         freeTextContainer.style.display = 'none';
@@ -509,8 +508,6 @@
       const canAnswerNow = state.can_answer && !state.has_answered && state.alive && !isCashOut && !cashoutWindowOpen;
       const canUseJoker = state.can_answer && state.joker_available && !state.has_answered && state.alive && !isCashOut && !cashoutWindowOpen;
       jokerBtn.disabled = !canUseJoker;
-      cashoutKeepBtn.style.display = 'inline-flex';
-      cashoutBoostBtn.style.display = 'inline-flex';
       cashoutKeepBtn.disabled = false;
       cashoutBoostBtn.disabled = false;
 
