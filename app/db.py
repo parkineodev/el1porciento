@@ -41,7 +41,14 @@ def get_pool() -> ConnectionPool:
             raise RuntimeError(
                 "DATABASE_URL no está configurada (cadena de conexión a Postgres/Supabase)"
             )
+        # prepare_threshold=None: el pooler de Supabase (modo transacción,
+        # puerto 6543) no soporta sentencias preparadas en el servidor, y
+        # psycopg las crea sola tras 5 usos de la misma consulta -- a partir
+        # de ahí esas consultas fallaban de forma intermitente (500).
         _pool = ConnectionPool(
-            _build_conninfo(database_url), min_size=1, max_size=5, kwargs={"autocommit": True}
+            _build_conninfo(database_url),
+            min_size=1,
+            max_size=5,
+            kwargs={"autocommit": True, "prepare_threshold": None},
         )
     return _pool
