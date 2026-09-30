@@ -234,7 +234,7 @@
         resultsBody.innerHTML = `
           <div class="stat-big">
             <div class="stat-big-number">${eliminatedThisRound}</div>
-            <div class="stat-big-label">eliminados en esta ronda</div>
+            <div class="stat-big-label">${state.current_question?.practice ? 'eliminados: era de prueba' : 'eliminados en esta ronda'}</div>
             <div class="stat-big-sub">${(state.last_result?.players_joker || []).length} han usado comodín</div>
           </div>
           <h3>Siguen en juego</h3>
@@ -248,7 +248,7 @@
       resultsCard.style.display = 'none';
       const q = state.current_question;
       questionTitle.textContent = q.text;
-      questionText.textContent = '';
+      questionText.textContent = q.practice ? 'Pregunta de prueba · no cuenta para la partida' : '';
       // Como en el programa: el medallón de la esquina muestra el % de gente
       // que suele acertarla (y el anillo hace de temporizador).
       medalLabel.textContent =
@@ -297,7 +297,7 @@
         const joker = (res.players_joker_names || []).join(', ') || '—';
         resultsBody.innerHTML = `
           <p class="hint"><strong>Correctos:</strong> ${correct}</p>
-          <p class="hint"><strong>Eliminados esta ronda:</strong> ${wrong}</p>
+          <p class="hint"><strong>${q.practice ? 'Han fallado (era de prueba, siguen en juego)' : 'Eliminados esta ronda'}:</strong> ${wrong}</p>
           <p class="hint"><strong>Comodín:</strong> ${joker}</p>
         `;
       } else {

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import List, Optional
 
 from fastapi import HTTPException
@@ -7,6 +8,8 @@ from psycopg.types.json import Jsonb
 
 from .db import get_pool, with_retry
 from .models import AnswerOption, Question, QuestionPayload, QuestionType
+
+log = logging.getLogger("el1porciento.questions")
 
 
 def _validate_batch(questions: List[Question]) -> None:
@@ -61,6 +64,7 @@ def _row_to_question(row: dict) -> Question:
         correct_free_text=row["correct_free_text"],
         numeric_answer=row["numeric_answer"],
         usual_correct_percentage=row["usual_correct_percentage"],
+        practice=bool(row.get("practice")),
     )
 
 
@@ -96,6 +100,27 @@ def _payload_to_row_values(payload: QuestionPayload) -> tuple:
     )
 
 
+# Pregunta de prueba de ejemplo, creada una sola vez junto con la columna
+# practice (se edita o se borra luego desde el admin).
+_SEED_PRACTICE_SQL = """
+insert into public.elporciento_questions
+  (id, sort_order, type, text, image_url, points, time_limit_seconds, options, practice)
+select 'prueba',
+       coalesce((select min(sort_order) from public.elporciento_questions), 1) - 1,
+       'single_choice',
+       '¿Quiénes se casan?',
+       null, 0, 20,
+       '[
+         {"id":"a","text":"Iñaki y Marta","image_url":null,"correct":true},
+         {"id":"b","text":"Pepe y Lola","image_url":null,"correct":false},
+         {"id":"c","text":"Nadie, es una trampa","image_url":null,"correct":false},
+         {"id":"d","text":"Todos los invitados","image_url":null,"correct":false}
+       ]'::jsonb,
+       true
+on conflict (id) do nothing
+"""
+
+
 class QuestionStore:
     """Banco de preguntas persistido en Postgres (tabla
     public.elporciento_questions), con caché en memoria igual que antes
@@ -106,17 +131,63 @@ class QuestionStore:
     def __init__(self) -> None:
         self._pool = get_pool()
         self._questions: List[Question] = []
+        self._has_practice_column = False
+        with_retry(self._ensure_practice_column, attempts=8, what="preparar columna de prueba")
         # Al arrancar (p. ej. Render reiniciando el proceso) la base puede
         # tardar en responder: se reintenta en vez de caerse a la primera.
         with_retry(self.reload, attempts=8, what="cargar preguntas")
 
+    def _ensure_practice_column(self) -> None:
+        """La marca de "pregunta de prueba" es una columna nueva. La app la
+        crea sola si falta (no toca nada existente), para no depender de
+        aplicar la migración a mano en Supabase antes de desplegar. Si el
+        usuario de la base no tuviera permiso, todo sigue funcionando igual
+        que antes, solo que sin preguntas de prueba.
+
+        La primera vez (cuando la columna se acaba de crear) añade también una
+        pregunta de prueba de ejemplo, la primera del orden, para editarla
+        desde el admin."""
+        exists_sql = """
+            select 1 from information_schema.columns
+            where table_schema = 'public' and table_name = 'elporciento_questions'
+              and column_name = 'practice'
+        """
+        with self._pool.connection() as conn:
+            existed = bool(conn.execute(exists_sql).fetchone())
+            if not existed:
+                try:
+                    conn.execute(
+                        "alter table public.elporciento_questions "
+                        "add column if not exists practice boolean not null default false"
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    log.warning("No se pudo crear la columna practice: %s", exc)
+            self._has_practice_column = bool(conn.execute(exists_sql).fetchone())
+            if self._has_practice_column and not existed:
+                conn.execute(_SEED_PRACTICE_SQL)
+
+    def _set_practice(self, question_id: str, practice: bool) -> None:
+        if not self._has_practice_column:
+            if practice:
+                raise HTTPException(
+                    status_code=400,
+                    detail="La base de datos aún no admite preguntas de prueba (falta la columna practice)",
+                )
+            return
+        with self._pool.connection() as conn:
+            conn.execute(
+                "update public.elporciento_questions set practice = %s where id = %s",
+                (practice, question_id),
+            )
+
     def reload(self) -> None:
+        practice_expr = "practice" if self._has_practice_column else "false"
         with self._pool.connection() as conn:
             rows = conn.execute(
-                """
+                f"""
                 select id, sort_order, type, text, image_url, points,
                        time_limit_seconds, correct_free_text, numeric_answer,
-                       usual_correct_percentage, options
+                       usual_correct_percentage, options, {practice_expr}
                 from public.elporciento_questions
                 order by sort_order asc
                 """
@@ -134,6 +205,7 @@ class QuestionStore:
             "numeric_answer",
             "usual_correct_percentage",
             "options",
+            "practice",
         ]
         parsed = [_row_to_question(dict(zip(columns, row))) for row in rows]
         _validate_batch(parsed)
@@ -180,6 +252,12 @@ class QuestionStore:
                 """,
                 _payload_to_row_values(payload),
             )
+
+        try:
+            self._set_practice(payload.id, payload.practice)
+        except HTTPException:
+            self.delete(payload.id, _skip_reload=True)
+            raise
 
         try:
             self.reload()
@@ -229,6 +307,7 @@ class QuestionStore:
                 question_id,
             )
         )
+        self._set_practice(question_id, payload.practice)
 
         try:
             self.reload()
@@ -261,6 +340,7 @@ class QuestionStore:
                     question_id,
                 )
             )
+            self._set_practice(question_id, previous.practice)
             self.reload()
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 

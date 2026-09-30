@@ -60,6 +60,20 @@ class Question(BaseModel):
     # estadística real conocida de antemano) -- no se calcula con las
     # partidas jugadas en la app.
     usual_correct_percentage: Optional[float] = None
+    # Pregunta de prueba para antes de empezar: se juega igual, pero nadie
+    # queda eliminado, no mueve puntos y no admite comodín.
+    practice: bool = False
+
+    @property
+    def is_one_percent(self) -> bool:
+        """La pregunta del 1% (la que suele acertar el 1% de la gente): en
+        ella no se suman puntos fijos, sino que acertar duplica la
+        puntuación que lleva el jugador y fallar la divide entre dos."""
+        return (
+            not self.practice
+            and self.usual_correct_percentage is not None
+            and self.usual_correct_percentage <= 1
+        )
 
     def get_correct_option_id(self) -> Optional[str]:
         if not self.options:
@@ -95,6 +109,7 @@ class Question(BaseModel):
             correct_free_text=self.correct_free_text if include_correct else None,
             numeric_answer=self.numeric_answer,
             usual_correct_percentage=self.usual_correct_percentage,
+            practice=self.practice,
         )
 
 
@@ -111,6 +126,7 @@ class QuestionPublic(BaseModel):
     correct_free_text: Optional[str] = None
     numeric_answer: bool = False
     usual_correct_percentage: Optional[float] = None
+    practice: bool = False
 
 
 class AnswerOptionPayload(BaseModel):
@@ -144,6 +160,7 @@ class QuestionPayload(BaseModel):
     correct_free_text: Optional[str] = None
     numeric_answer: bool = False
     usual_correct_percentage: Optional[float] = Field(default=None, ge=0, le=100)
+    practice: bool = False
     options: Optional[List[AnswerOptionPayload]] = None
 
 

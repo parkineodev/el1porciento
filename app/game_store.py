@@ -54,6 +54,21 @@ def _generate_token() -> str:
     return secrets.token_urlsafe(24)
 
 
+def score_after_answer(score: float, question: Question, correct: bool) -> float:
+    """Puntuación del jugador tras corregir su respuesta.
+
+    - Pregunta del 1%: acertar duplica lo que lleva; fallar lo divide entre dos.
+    - Resto: acertar suma los puntos de la pregunta; fallar lo deja como está
+      (queda eliminado, pero conserva lo que llevaba).
+    - Pregunta de prueba: no cambia nada.
+    """
+    if question.practice:
+        return score
+    if question.is_one_percent:
+        return score * 2 if correct else max(0, score * 0.5)
+    return score + question.points if correct else score
+
+
 def _normalize_free_text(value: Optional[str]) -> str:
     return (value or "").strip().lower()
 
@@ -498,12 +513,12 @@ class GameStore:
                 if record.correct:
                     players_correct.append(player_id)
                     players_correct_names.append(player.name)
-                    player.score += question.points
                 else:
                     players_wrong.append(player_id)
                     players_wrong_names.append(player.name)
-                    player.status = PlayerStatus.ELIMINATED
-                    player.score = max(0, player.score * 0.5)
+                    if not question.practice:  # en la de prueba nadie queda eliminado
+                        player.status = PlayerStatus.ELIMINATED
+                player.score = score_after_answer(player.score, question, record.correct)
 
             answered_records = [
                 a for a in answers.values() if not a.used_joker and (a.selected_option_id or a.text_answer)
@@ -528,12 +543,13 @@ class GameStore:
                 players_correct_names=players_correct_names,
             )
             game.score_history = [snap for snap in game.score_history if snap.question_id != question.id]
-            game.score_history.append(
-                ScoreSnapshot(
-                    question_id=question.id,
-                    scores={pid: p.score for pid, p in game.players.items()},
+            if not question.practice:  # la de prueba no es un paso del recuento
+                game.score_history.append(
+                    ScoreSnapshot(
+                        question_id=question.id,
+                        scores={pid: p.score for pid, p in game.players.items()},
+                    )
                 )
-            )
             self._save(game)
             return game.question_results[question.id]
 
@@ -611,6 +627,8 @@ class GameStore:
             if existing is not None and existing.used_joker:
                 return existing  # reintento: el comodín ya quedó registrado
 
+            if question.practice:
+                raise HTTPException(status_code=400, detail="En la pregunta de prueba no hay comodín")
             if not player.joker_available:
                 raise HTTPException(status_code=400, detail="Ya usaste tu comodín")
             if player.status != PlayerStatus.ALIVE:

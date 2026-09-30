@@ -551,11 +551,18 @@
 
       if (state.phase === 'intermission') {
         currentQuestionId = null;
-        questionTitle.textContent = 'Resumen de la ronda';
+        const afterPractice = !!state.current_question?.practice;
+        questionTitle.textContent = afterPractice ? 'Fin de la prueba' : 'Resumen de la ronda';
         questionText.textContent = '';
         usualCorrectHint.style.display = 'none';
         questionImage.style.display = 'none';
-        optionsContainer.innerHTML = `
+        optionsContainer.innerHTML = afterPractice
+          ? `
+          <div class="stat-big">
+            <div class="stat-big-label">Ya sabes cómo funciona. Ahora empieza la partida de verdad.</div>
+          </div>
+        `
+          : `
           <div class="stat-big">
             <div class="stat-big-number">${state.intermission_eliminated_count ?? 0}</div>
             <div class="stat-big-label">eliminados en esta ronda</div>
@@ -566,7 +573,9 @@
         jokerBtn.disabled = true;
         questionCard.style.pointerEvents = 'auto';
         hideOverlay();
-        actionHint.textContent = `Quedan ${state.intermission_alive_count ?? '—'} en juego. Espera a que el presentador abra la siguiente pregunta.`;
+        actionHint.textContent = afterPractice
+          ? 'Espera a que el presentador abra la primera pregunta.'
+          : `Quedan ${state.intermission_alive_count ?? '—'} en juego. Espera a que el presentador abra la siguiente pregunta.`;
         return;
       }
 
@@ -597,9 +606,12 @@
         freeTextDraft = '';
         autoSubmittedFor = null;
       }
-      questionTitle.textContent = `Pregunta ${q.order}`;
+      questionTitle.textContent = q.practice ? 'Pregunta de prueba' : `Pregunta ${q.order}`;
       questionText.textContent = q.text;
-      if (q.usual_correct_percentage != null) {
+      if (q.practice) {
+        usualCorrectHint.textContent = 'Es de prueba: no cuenta para la partida y nadie queda eliminado.';
+        usualCorrectHint.style.display = 'block';
+      } else if (q.usual_correct_percentage != null) {
         usualCorrectHint.textContent = `Normalmente la acierta el ${q.usual_correct_percentage}% de la gente.`;
         usualCorrectHint.style.display = 'block';
       } else {
@@ -628,7 +640,7 @@
       }
 
       const canAnswerNow = state.can_answer && !state.has_answered && state.alive && !isCashOut && !cashoutWindowOpen;
-      const canUseJoker = state.can_answer && state.joker_available && !state.has_answered && state.alive && !isCashOut && !cashoutWindowOpen;
+      const canUseJoker = !q.practice && state.can_answer && state.joker_available && !state.has_answered && state.alive && !isCashOut && !cashoutWindowOpen;
       jokerBtn.disabled = !canUseJoker;
       cashoutKeepBtn.disabled = false;
       cashoutBoostBtn.disabled = false;
@@ -682,7 +694,9 @@
       } else if (state.has_answered) {
         actionHint.textContent = 'Respuesta enviada. Espera resultados.';
       } else {
-        actionHint.textContent = 'Pregunta abierta. Elige opción o usa tu comodín.';
+        actionHint.textContent = q.practice
+          ? 'Pregunta de prueba abierta. Elige una opción.'
+          : 'Pregunta abierta. Elige opción o usa tu comodín.';
       }
 
       if (state.status === 'cashed_out') {
@@ -694,6 +708,14 @@
       } else if (state.phase === 'answering' && state.has_answered) {
         questionCard.style.pointerEvents = 'none';
         showOverlay('info', 'Respuesta enviada', 'Espera a que acabe el tiempo');
+      } else if (state.phase === 'results' && q.practice) {
+        questionCard.style.pointerEvents = 'none';
+        if (state.last_answer_correct === true) {
+          showOverlay('success', '¡Correcto!', 'Era de prueba: así funciona el juego');
+        } else {
+          showOverlay('info', 'Has fallado', 'Era de prueba: no cuenta y sigues en juego');
+          overlayIcon.textContent = '✖';
+        }
       } else if (state.phase === 'results') {
         questionCard.style.pointerEvents = 'none';
         if (state.alive) {

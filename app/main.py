@@ -408,7 +408,12 @@ def screen_state(game_id: str) -> dict:
     intermission_alive = []
     intermission_eliminated = []
     if game.phase == GamePhase.INTERMISSION:
-        last_wrong = set((last_result or {}).get("players_wrong") or [])
+        # En la pregunta de prueba fallar no elimina: nadie sale como caído.
+        last_wrong = (
+            set()
+            if question_public and question_public.practice
+            else set((last_result or {}).get("players_wrong") or [])
+        )
         for pid, player in game.players.items():
             entry = {
                 "name": player.name,
@@ -580,7 +585,11 @@ def player_state(game_id: str, player_token: str = Query(...)) -> PlayerState:
     if game.phase == GamePhase.INTERMISSION:
         result = game.question_results.get(game.current_question_id) if game.current_question_id else None
         result_dict = result if isinstance(result, dict) else (result.model_dump() if result else {})
-        intermission_eliminated_count = len(result_dict.get("players_wrong") or [])
+        intermission_eliminated_count = (
+            0
+            if question_public and question_public.practice
+            else len(result_dict.get("players_wrong") or [])
+        )
         intermission_alive_count = len(game.alive_players())
         intermission_joker_count = len(result_dict.get("players_joker") or [])
 

@@ -66,6 +66,12 @@ el1porciento/
 - Se aceptan respuestas hasta 3 s después de acabar el tiempo, mientras la pregunta siga abierta.
 - No subas cambios el día del evento: cada despliegue reinicia el servidor.
 
+## Puntuación
+
+- Preguntas normales: acertar suma los puntos de la pregunta; fallar elimina, pero el jugador conserva lo que llevaba.
+- Pregunta del 1% (la que tiene «% que suele acertarla» a 1): no usa sus puntos; acertar duplica la puntuación que lleva el jugador y fallar la divide entre dos.
+- Pregunta de prueba (casilla en el admin): se juega antes de empezar para enseñar cómo funciona; nadie queda eliminado, no da ni quita puntos, no admite comodín y no sale en el recuento. Conviene darle el orden más bajo (p. ej. 0) para que sea la primera.
+
 ## Variables de entorno
 
 - `DATABASE_URL` — cadena de conexión a Postgres/Supabase (obligatoria).

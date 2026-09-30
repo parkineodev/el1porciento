@@ -23,11 +23,20 @@ def _question_order(question_store: QuestionStore, question_id: str, fallback: i
     return question.order, question.text
 
 
+def _is_practice(question_store: QuestionStore, question_id: str) -> bool:
+    try:
+        return question_store.get_by_id(question_id).practice
+    except HTTPException:
+        return False
+
+
 def build_rounds(game: GameSession, question_store: QuestionStore) -> List[dict]:
     """Por cada pregunta corregida: quién se eliminó y quién se plantó
     después de ella, en el orden de las preguntas."""
     rounds = []
     for idx, (question_id, result) in enumerate(game.question_results.items()):
+        if _is_practice(question_store, question_id):
+            continue  # la pregunta de prueba no es una ronda de verdad
         order, text = _question_order(question_store, question_id, 1000 + idx)
         cashed_out = [
             p.name

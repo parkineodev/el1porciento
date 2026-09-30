@@ -180,7 +180,7 @@
       questions.forEach(q => {
         const opt = document.createElement('option');
         opt.value = q.id;
-        opt.textContent = `${q.order}. ${q.text}`;
+        opt.textContent = `${q.practice ? '[PRUEBA] ' : ''}${q.order}. ${q.text}`;
         questionSelect.appendChild(opt);
       });
     }
@@ -293,7 +293,7 @@
       playersBadge.textContent = `${orderedPlayers.length} jugadores`;
       stateText.textContent = `Fase: ${state.phase}.`;
       questionBadge.textContent = state.current_question
-        ? `Pregunta: ${state.current_question.text}${
+        ? `Pregunta${state.current_question.practice ? ' de prueba' : ''}: ${state.current_question.text}${
             state.current_question.usual_correct_percentage != null
               ? ` (suele acertarla el ${state.current_question.usual_correct_percentage}%)`
               : ''

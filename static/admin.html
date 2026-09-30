@@ -75,8 +75,16 @@
             <input id="timeLimitInput" class="input" type="number" min="1" value="20" required>
           </div>
           <div class="grid" style="gap:6px;">
-            <label class="hint">% que suele acertarla (opcional, dato informativo tuyo)</label>
+            <label class="hint">% que suele acertarla (opcional; con un 1 es la pregunta del 1%)</label>
             <input id="usualCorrectPercentageInput" class="input" type="number" min="0" max="100" step="0.1" placeholder="p. ej. 35">
+            <p class="hint" id="onePercentHint" style="display:none;">Pregunta del 1%: no se usan los puntos. Quien acierta duplica la puntuación que lleva y quien falla la divide entre dos.</p>
+          </div>
+          <div class="grid" style="gap:6px;">
+            <label class="hint" style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+              <input id="practiceInput" type="checkbox">
+              Pregunta de prueba (para antes de empezar: nadie queda eliminado, no da ni quita puntos y no admite comodín)
+            </label>
+            <p class="hint" id="practiceHint" style="display:none;">Ponle un orden menor que el resto (por ejemplo 0) para que salga la primera.</p>
           </div>
           <div class="grid" style="gap:6px;">
             <label class="hint">Texto de la pregunta</label>
@@ -133,6 +141,13 @@
     const pointsInput = document.getElementById('pointsInput');
     const timeLimitInput = document.getElementById('timeLimitInput');
     const usualCorrectPercentageInput = document.getElementById('usualCorrectPercentageInput');
+    const onePercentHint = document.getElementById('onePercentHint');
+    const isOnePercent = (pct) => pct !== null && pct !== undefined && pct !== '' && Number(pct) <= 1;
+    function updateOnePercentHint() {
+      onePercentHint.style.display =
+        isOnePercent(usualCorrectPercentageInput.value) && !practiceInput.checked ? 'block' : 'none';
+    }
+    usualCorrectPercentageInput.addEventListener('input', updateOnePercentHint);
     const textInput = document.getElementById('textInput');
     const questionImageFile = document.getElementById('questionImageFile');
     const questionImagePreview = document.getElementById('questionImagePreview');
@@ -141,6 +156,13 @@
     const freeTextFields = document.getElementById('freeTextFields');
     const correctFreeTextInput = document.getElementById('correctFreeTextInput');
     const numericAnswerInput = document.getElementById('numericAnswerInput');
+    const practiceInput = document.getElementById('practiceInput');
+    const practiceHint = document.getElementById('practiceHint');
+    function updatePracticeHint() {
+      practiceHint.style.display = practiceInput.checked ? 'block' : 'none';
+      updateOnePercentHint();
+    }
+    practiceInput.addEventListener('change', updatePracticeHint);
     const optionsFields = document.getElementById('optionsFields');
     const optionsList = document.getElementById('optionsList');
     const addOptionBtn = document.getElementById('addOptionBtn');
@@ -336,6 +358,7 @@
       addOptionRow(null);
       addOptionRow(null);
       updateTypeVisibility();
+      updatePracticeHint();
       formHint.textContent = '';
     }
 
@@ -359,6 +382,7 @@
       pointsInput.value = question.points;
       timeLimitInput.value = question.time_limit_seconds;
       usualCorrectPercentageInput.value = question.usual_correct_percentage ?? '';
+      updateOnePercentHint();
       textInput.value = question.text;
       questionImageUrl.value = question.image || '';
       syncRemoveImageBtn(removeQuestionImageBtn, questionImageUrl);
@@ -366,6 +390,8 @@
       questionImagePreview.style.display = question.image ? 'block' : 'none';
       correctFreeTextInput.value = question.correct_free_text || '';
       numericAnswerInput.checked = !!question.numeric_answer;
+      practiceInput.checked = !!question.practice;
+      updatePracticeHint();
       optionsList.innerHTML = '';
       (question.options || []).forEach((opt) => addOptionRow(opt));
       if (!question.options || question.options.length === 0) {
@@ -405,6 +431,7 @@
           usualCorrectPercentageInput.value !== '' ? Number(usualCorrectPercentageInput.value) : null,
         correct_free_text: isFreeText ? correctFreeTextInput.value.trim() : null,
         numeric_answer: isFreeText ? numericAnswerInput.checked : false,
+        practice: practiceInput.checked,
         options: isFreeText ? null : collectOptions(),
       };
 
@@ -461,9 +488,10 @@
             <div class="section-title">
               <h3>${q.order}. ${q.text}</h3>
               <span class="badge">${q.type === 'free_text' ? 'Respuesta libre' : 'Opción múltiple'}</span>
+              ${q.practice ? '<span class="badge">🧪 De prueba</span>' : ''}
               ${q.type === 'free_text' && q.numeric_answer ? '<span class="badge">🔢 Numérica</span>' : ''}
             </div>
-            <p class="hint">ID: ${q.id} · ${q.points} puntos · ${q.time_limit_seconds}s${q.usual_correct_percentage != null ? ` · suele acertarla el ${q.usual_correct_percentage}%` : ''}</p>
+            <p class="hint">ID: ${q.id} · ${q.practice ? 'no cuenta' : isOnePercent(q.usual_correct_percentage) ? 'duplica o divide entre dos' : `${q.points} puntos`} · ${q.time_limit_seconds}s${q.usual_correct_percentage != null ? ` · suele acertarla el ${q.usual_correct_percentage}%` : ''}</p>
             ${q.image ? `<img src="${q.image}" style="max-height:100px; border-radius:8px;">` : ''}
             ${q.type === 'free_text' ? `<p class="hint">Respuesta correcta: ${q.correct_free_text}</p>` : `<p class="hint">${optionsSummary}</p>`}
             <div class="form-row" style="margin-top:10px;">
