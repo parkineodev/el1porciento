@@ -5,7 +5,7 @@ from typing import List, Optional
 from fastapi import HTTPException
 from psycopg.types.json import Jsonb
 
-from .db import get_pool
+from .db import get_pool, with_retry
 from .models import AnswerOption, Question, QuestionPayload, QuestionType
 
 
@@ -106,7 +106,9 @@ class QuestionStore:
     def __init__(self) -> None:
         self._pool = get_pool()
         self._questions: List[Question] = []
-        self.reload()
+        # Al arrancar (p. ej. Render reiniciando el proceso) la base puede
+        # tardar en responder: se reintenta en vez de caerse a la primera.
+        with_retry(self.reload, attempts=8, what="cargar preguntas")
 
     def reload(self) -> None:
         with self._pool.connection() as conn:

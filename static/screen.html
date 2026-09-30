@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="/static/styles.css">
   <link rel="stylesheet" href="/static/theme-1porciento.css">
   <script src="https://cdn.jsdelivr.net/npm/qrious@4.0.2/dist/qrious.min.js"></script>
+  <script src="/static/net.js"></script>
   <script src="/static/image-preload.js"></script>
 </head>
 <body class="theme-1p screen">
@@ -122,26 +123,22 @@
     function setGameId(id) {
       gameId = id.trim();
       gameIdInput.value = gameId;
-      if (poll) clearInterval(poll);
+      if (poll) poll.stop();
+      poll = null;
       if (gameId) {
         document.body.dataset.loaded = '1';
         ImagePreloader.preloadAll();
-        fetchState();
-        poll = setInterval(fetchState, 1400);
+        poll = Net.poll(fetchState, 1000);
       }
     }
 
     async function fetchState() {
       if (!gameId) return;
-      try {
-        const res = await fetch(`/api/games/${gameId}/screen/state`);
-        if (!res.ok) throw new Error('No se pudo cargar estado');
-        const state = await res.json();
-        render(state);
-        syncMusic(state);
-      } catch (e) {
-        questionText.textContent = e.message;
-      }
+      // Si falla, se deja en pantalla lo último que había (sin mensajes de
+      // error delante de los invitados) y el sondeo reintenta solo.
+      const state = await Net.request(`/api/games/${gameId}/screen/state`, { timeoutMs: 6000 });
+      render(state);
+      syncMusic(state);
     }
 
     function stopTimer() {
@@ -372,12 +369,10 @@
       stopRecount();
       recountTitle.textContent = 'Preparando el recuento…';
       try {
-        const res = await fetch(`/api/games/${gameId}/recount`);
-        if (!res.ok) throw new Error('No se pudo cargar el recuento');
-        playRecount(await res.json(), elapsedMs);
-      } catch (e) {
-        recountTitle.textContent = e.message;
-        recountStartedAt = null; // se reintenta en el siguiente sondeo
+        const data = await Net.request(`/api/games/${gameId}/recount`, { retries: 4, timeoutMs: 10000 });
+        playRecount(data, elapsedMs);
+      } catch (_) {
+        recountStartedAt = null; // se reintenta en el siguiente sondeo, sin avisos en pantalla
       }
     }
 

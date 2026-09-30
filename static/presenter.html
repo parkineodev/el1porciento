@@ -128,6 +128,7 @@
     </section>
   </main>
 
+  <script src="/static/net.js"></script>
   <script>
     const createForm = document.getElementById('createForm');
     const loadForm = document.getElementById('loadForm');
@@ -174,8 +175,7 @@
     let currentQuestionId = null;
 
     async function fetchQuestions() {
-      const res = await fetch('/api/questions?include_correct=true');
-      questions = await res.json();
+      questions = await Net.request('/api/questions?include_correct=true', { retries: 10 });
       questionSelect.innerHTML = '<option value=\"\">Siguiente en orden</option>';
       questions.forEach(q => {
         const opt = document.createElement('option');
@@ -197,7 +197,8 @@
       currentQuestionId = null;
       persist();
       updateBadges();
-      if (poll) clearInterval(poll);
+      if (poll) poll.stop();
+      poll = null;
       stateText.textContent = 'Sin conexión.';
       playersTableBody.innerHTML = '';
       resultsContainer.innerHTML = '<p class="hint">Cierra una pregunta para ver el desglose.</p>';
@@ -214,13 +215,11 @@
       e.preventDefault();
       try {
         setupHint.textContent = 'Creando partida...';
-        const res = await fetch('/api/games', {
+        const data = await Net.request('/api/games', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ presenter_name: presenterNameInput.value }),
+          body: { presenter_name: presenterNameInput.value },
+          retries: 3,
         });
-        if (!res.ok) throw new Error('No se pudo crear partida');
-        const data = await res.json();
         gameId = data.game_id;
         presenterToken = data.presenter_token;
         presenterName = presenterNameInput.value;
@@ -249,16 +248,19 @@
 
     async function fetchState() {
       if (!gameId || !presenterToken) return;
+      let state;
       try {
-        const res = await fetch(`/api/games/${gameId}/presenter/state?presenter_token=${encodeURIComponent(presenterToken)}`);
-        if (!res.ok) throw new Error('No se pudo obtener estado');
-        const state = await res.json();
-        renderState(state);
-        if (state.phase === 'results' && state.current_question) {
-          fetchResults(state.current_question.id);
-        }
+        state = await Net.request(
+          `/api/games/${gameId}/presenter/state?presenter_token=${encodeURIComponent(presenterToken)}`,
+          { timeoutMs: 6000 },
+        );
       } catch (err) {
-        stateText.textContent = err.message;
+        stateText.textContent = err.status ? err.message : 'Sin conexión con el servidor, reintentando…';
+        throw err; // el sondeo espacia y reintenta
+      }
+      renderState(state);
+      if (state.phase === 'results' && state.current_question) {
+        fetchResults(state.current_question.id);
       }
     }
 
@@ -328,9 +330,9 @@
     async function fetchResults(questionId) {
       if (!gameId || !presenterToken) return;
       try {
-        const res = await fetch(`/api/games/${gameId}/questions/${questionId}/results?presenter_token=${encodeURIComponent(presenterToken)}`);
-        if (!res.ok) return;
-        const data = await res.json();
+        const data = await Net.request(
+          `/api/games/${gameId}/questions/${questionId}/results?presenter_token=${encodeURIComponent(presenterToken)}`,
+        );
         renderResults(data);
       } catch (_) {}
     }
@@ -350,8 +352,17 @@
       `;
     }
 
+    // «Siguiente» manda siempre qué pregunta es: si la petición se
+    // reintenta, el servidor no avanza dos veces.
+    function nextQuestionId() {
+      if (!questions.length) return null;
+      if (!currentQuestionId) return questions[0].id;
+      const idx = questions.findIndex((q) => q.id === currentQuestionId);
+      return idx >= 0 && idx + 1 < questions.length ? questions[idx + 1].id : null;
+    }
+
     nextBtn.addEventListener('click', () => {
-      const qid = questionSelect.value || null;
+      const qid = questionSelect.value || nextQuestionId();
       callAction('next-question', { question_id: qid });
     });
 
@@ -394,28 +405,32 @@
       callAction('intermission', {});
     });
 
+    const actionsInFlight = new Set();
+
     async function callAction(action, extra) {
       if (!gameId || !presenterToken) {
         controlHint.textContent = 'Conéctate primero.';
         return;
       }
+      const key = `${action} ${JSON.stringify(extra || {})}`;
+      if (actionsInFlight.has(key)) return; // doble clic
+      actionsInFlight.add(key);
       try {
         controlHint.textContent = 'Enviando...';
-        let url = `/api/games/${gameId}/${action}`;
         const payload = Object.assign({ presenter_token: presenterToken }, extra || {});
-        const res = await fetch(url, {
+        // Todas las acciones del presentador se pueden repetir sin efectos
+        // dobles en el servidor, así que se reintentan ante cortes.
+        await Net.request(`/api/games/${gameId}/${action}`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
+          body: payload,
+          retries: 6,
         });
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          throw new Error(err.detail || 'Error en acción');
-        }
         controlHint.textContent = 'OK';
-        fetchState();
+        if (poll) poll.now();
       } catch (err) {
-        controlHint.textContent = err.message;
+        controlHint.textContent = err.status ? err.message : 'Sin conexión: no se ha podido enviar. Vuelve a pulsar.';
+      } finally {
+        actionsInFlight.delete(key);
       }
     }
 
@@ -426,13 +441,12 @@
       }
       setupHint.textContent = 'Conectado.';
       updateBadges();
-      if (poll) clearInterval(poll);
-      fetchState();
-      poll = setInterval(fetchState, 1200);
+      if (poll) poll.stop();
+      poll = Net.poll(fetchState, 1200);
     }
 
     // Load initial data
-    fetchQuestions();
+    fetchQuestions().catch(() => {});
     if (gameId && presenterToken) {
       gameIdInput.value = gameId;
       presenterTokenInput.value = presenterToken;

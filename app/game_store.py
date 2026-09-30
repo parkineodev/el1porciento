@@ -1,16 +1,15 @@
 from __future__ import annotations
 
+import logging
 import secrets
 import string
 import threading
 import time
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 from fastapi import HTTPException
-from fastapi.encoders import jsonable_encoder
-from psycopg.types.json import Jsonb
 
-from .db import get_pool
+from .db import get_pool, with_retry
 from .models import (
     AnswerRecord,
     GamePhase,
@@ -23,6 +22,22 @@ from .models import (
     RosterEntry,
     ScoreSnapshot,
 )
+
+log = logging.getLogger("el1porciento.games")
+
+# Margen tras acabar el tiempo en el que aún se acepta una respuesta: el móvil
+# la envía a tiempo pero tarda en llegar (red del móvil, reintentos). El
+# presentador sigue siendo quien cierra la pregunta.
+ANSWER_GRACE_SECONDS = 3.0
+
+# Cada cuánto como mínimo se vuelca a la base de datos una partida con
+# cambios: todas las respuestas que llegan en ese intervalo van en una sola
+# escritura.
+FLUSH_INTERVAL_SECONDS = 0.25
+
+# Cuánto se recuerda que un id de partida no existe, para que un móvil con una
+# partida vieja guardada no consulte la base de datos en cada sondeo.
+MISSING_TTL_SECONDS = 10.0
 
 
 def _generate_id(prefix: str) -> str:
@@ -48,10 +63,16 @@ class GameStore:
 
     Cada partida se guarda como un único blob jsonb, igual que antes se
     guardaba como un único fichero JSON — mismo modelo de datos, solo cambia
-    dónde vive. Se mantiene una caché en memoria (self._games) idéntica a la
-    versión anterior; requiere que el proceso corra en una sola instancia
-    (sin --workers ni autoscaling), igual que ya requería implícitamente el
-    fichero JSON.
+    dónde vive. La fuente de verdad durante la partida es la caché en memoria
+    (self._games); requiere que el proceso corra en una sola instancia (sin
+    --workers ni autoscaling).
+
+    Las escrituras a la base de datos van en segundo plano: cada cambio se
+    aplica en memoria y se contesta al momento, y un hilo aparte vuelca la
+    partida (agrupando todos los cambios de los últimos
+    FLUSH_INTERVAL_SECONDS) reintentando hasta que la base responda. Así 60
+    respuestas a la vez no hacen cola detrás de 60 escrituras, y un corte
+    momentáneo de Supabase no se nota en los móviles.
     """
 
     def __init__(self, database_url: Optional[str] = None):
@@ -64,6 +85,17 @@ class GameStore:
         self._code_index: Dict[str, str] = {}
         self._locks: Dict[str, threading.Lock] = {}
         self._locks_guard = threading.Lock()
+        self._missing: Dict[str, float] = {}
+
+        self._dirty: Set[str] = set()
+        self._deleted: Set[str] = set()
+        self._dirty_cond = threading.Condition()
+        # Solo un volcado a la vez, para que una foto vieja de la partida no
+        # pueda llegar a la base después de una más nueva.
+        self._flush_lock = threading.Lock()
+        self.last_flush_ok_at: Optional[float] = None
+        self.last_flush_error: Optional[str] = None
+        threading.Thread(target=self._flush_loop, name="game-flusher", daemon=True).start()
 
     def _lock_for(self, game_id: str) -> threading.Lock:
         with self._locks_guard:
@@ -74,19 +106,91 @@ class GameStore:
             return lock
 
     def _save(self, game: GameSession) -> None:
-        data = jsonable_encoder(game)
+        """Marca la partida para volcarla a la base en segundo plano. Se
+        llama con el lock de la partida cogido, tras mutarla en memoria."""
+        self._games[game.id] = game
+        self._code_index[game.code.upper()] = game.id
+        with self._dirty_cond:
+            self._dirty.add(game.id)
+            self._dirty_cond.notify()
+
+    def _write_row(self, game_id: str, code: str, payload: str) -> None:
         with self._pool.connection() as conn:
             conn.execute(
                 """
                 insert into public.elporciento_games (id, code, data, updated_at)
-                values (%s, %s, %s, now())
+                values (%s, %s, %s::jsonb, now())
                 on conflict (id) do update
                 set code = excluded.code, data = excluded.data, updated_at = now()
                 """,
-                (game.id, game.code.upper(), Jsonb(data)),
+                (game_id, code, payload),
             )
-        self._games[game.id] = game
-        self._code_index[game.code.upper()] = game.id
+
+    def _snapshot(self, game_id: str) -> Optional[Tuple[str, str]]:
+        game = self._games.get(game_id)
+        if game is None:
+            return None
+        with self._lock_for(game_id):
+            if game_id in self._deleted:
+                return None
+            # model_dump_json (serializador en Rust de pydantic) es mucho más
+            # rápido que jsonable_encoder, y se hace con el lock cogido.
+            return game.code.upper(), game.model_dump_json()
+
+    def flush(self) -> bool:
+        """Vuelca a la base todas las partidas con cambios pendientes.
+        Devuelve False si alguna no se pudo escribir (queda pendiente)."""
+        with self._flush_lock:
+            with self._dirty_cond:
+                pending = list(self._dirty)
+                self._dirty.clear()
+            ok = True
+            for game_id in pending:
+                snapshot = self._snapshot(game_id)
+                if snapshot is None:
+                    continue
+                try:
+                    self._write_row(game_id, *snapshot)
+                except Exception as exc:  # noqa: BLE001
+                    ok = False
+                    self.last_flush_error = type(exc).__name__
+                    log.warning("No se pudo guardar la partida %s, se reintentará: %s", game_id, exc)
+                    with self._dirty_cond:
+                        self._dirty.add(game_id)
+            if ok:
+                self.last_flush_ok_at = time.time()
+                self.last_flush_error = None
+            return ok
+
+    def _flush_loop(self) -> None:
+        backoff = 0.5
+        while True:
+            with self._dirty_cond:
+                while not self._dirty:
+                    self._dirty_cond.wait()
+            time.sleep(FLUSH_INTERVAL_SECONDS)
+            try:
+                ok = self.flush()
+            except Exception:  # noqa: BLE001 -- el hilo no puede morir nunca
+                log.exception("Error inesperado volcando partidas")
+                ok = False
+            if ok:
+                backoff = 0.5
+            else:
+                time.sleep(backoff)
+                backoff = min(backoff * 2, 5.0)
+
+    def flush_before_exit(self, timeout: float = 20.0) -> None:
+        """Al apagar el proceso (redeploy/reinicio en Render): vuelca lo que
+        quede pendiente, reintentando hasta `timeout` segundos."""
+        deadline = time.time() + timeout
+        while self.pending_writes() and time.time() < deadline:
+            if not self.flush():
+                time.sleep(0.5)
+
+    def pending_writes(self) -> int:
+        with self._dirty_cond:
+            return len(self._dirty)
 
     @staticmethod
     def _hydrate(raw: dict) -> GameSession:
@@ -109,22 +213,34 @@ class GameStore:
             self._code_index[game.code.upper()] = game.id
             return game
 
+    def _fetch_one(self, sql: str, params: tuple):
+        def run():
+            with self._pool.connection() as conn:
+                return conn.execute(sql, params).fetchone()
+
+        try:
+            return with_retry(run, what="leer partida")
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(
+                status_code=503, detail="Base de datos no disponible, reintenta"
+            ) from exc
+
     def _load_from_db(self, game_id: str) -> Optional[GameSession]:
-        with self._pool.connection() as conn:
-            row = conn.execute(
-                "select data from public.elporciento_games where id = %s",
-                (game_id,),
-            ).fetchone()
+        missing_at = self._missing.get(game_id)
+        if missing_at and time.time() - missing_at < MISSING_TTL_SECONDS:
+            return None
+        row = self._fetch_one(
+            "select data from public.elporciento_games where id = %s", (game_id,)
+        )
         if not row:
+            self._missing[game_id] = time.time()
             return None
         return self._adopt_or_cache(self._hydrate(row[0]))
 
     def _load_by_code_from_db(self, code: str) -> Optional[GameSession]:
-        with self._pool.connection() as conn:
-            row = conn.execute(
-                "select data from public.elporciento_games where code = %s",
-                (code.upper(),),
-            ).fetchone()
+        row = self._fetch_one(
+            "select data from public.elporciento_games where code = %s", (code.upper(),)
+        )
         if not row:
             return None
         return self._adopt_or_cache(self._hydrate(row[0]))
@@ -145,7 +261,19 @@ class GameStore:
             presenter_token=presenter_token,
             roster=roster or [],
         )
-        self._save(game)
+        # La partida nueva se escribe ya (no en segundo plano): quien la crea
+        # (la web de la boda) guarda su id y cuenta con que exista.
+        try:
+            with_retry(
+                lambda: self._write_row(game.id, game.code.upper(), game.model_dump_json()),
+                what="crear partida",
+            )
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(
+                status_code=503, detail="Base de datos no disponible, reintenta"
+            ) from exc
+        self._games[game.id] = game
+        self._code_index[game.code.upper()] = game.id
         return game
 
     def get_roster_by_code(self, code: str) -> List[RosterEntry]:
@@ -186,21 +314,37 @@ class GameStore:
         return game, player_id, player
 
     def join_game(
-        self, code: str, player_name: str, external_ref: Optional[str] = None
+        self,
+        code: str,
+        player_name: str,
+        external_ref: Optional[str] = None,
+        client_key: Optional[str] = None,
+        auto_rejoin: bool = False,
     ) -> Tuple[GameSession, Player, str]:
         game = self.get_game_by_code(code)
         with self._lock_for(game.id):
             if game.phase == GamePhase.FINISHED:
                 raise HTTPException(status_code=400, detail="La partida ha terminado")
-            if external_ref:
-                for existing_id, existing in game.players.items():
-                    if existing.external_ref == external_ref:
-                        # Ya unido antes (otra pestaña/dispositivo): mismo
-                        # jugador, token nuevo. Evita duplicar su puntuación.
-                        player_token = _generate_token()
-                        game.player_tokens[player_token] = existing_id
-                        self._save(game)
-                        return game, existing, player_token
+            own_keys = [key for key in (external_ref, client_key) if key]
+            if any(key in game.kicked_keys for key in own_keys):
+                if auto_rejoin:
+                    # El móvil intenta reengancharse solo tras perder la
+                    # sesión: si lo expulsó el presentador, no se le vuelve
+                    # a meter.
+                    raise HTTPException(status_code=403, detail="El presentador te ha sacado de la partida")
+                # Se vuelve a unir a mano: se le deja (expulsión por error).
+                game.kicked_keys = [key for key in game.kicked_keys if key not in own_keys]
+            for existing_id, existing in game.players.items():
+                if (external_ref and existing.external_ref == external_ref) or (
+                    client_key and existing.client_key == client_key
+                ):
+                    # Ya unido antes (reintento, otra pestaña/dispositivo o
+                    # sesión perdida): mismo jugador, token nuevo. Evita
+                    # duplicar su puntuación.
+                    player_token = _generate_token()
+                    game.player_tokens[player_token] = existing_id
+                    self._save(game)
+                    return game, existing, player_token
 
             if game.phase not in (GamePhase.LOBBY, GamePhase.QUESTION_WAITING):
                 raise HTTPException(status_code=400, detail="La partida ya ha empezado")
@@ -211,7 +355,9 @@ class GameStore:
 
             player_id = _generate_id("player")
             player_token = _generate_token()
-            player = Player(id=player_id, name=player_name, external_ref=external_ref)
+            player = Player(
+                id=player_id, name=player_name, external_ref=external_ref, client_key=client_key
+            )
 
             game.players[player_id] = player
             game.player_tokens[player_token] = player_id
@@ -224,6 +370,13 @@ class GameStore:
             self._validate_presenter(game, presenter_token)
             if game.phase == GamePhase.FINISHED:
                 raise HTTPException(status_code=400, detail="La partida está terminada")
+            if game.current_question_id == question.id and game.phase in (
+                GamePhase.QUESTION_WAITING,
+                GamePhase.ANSWERING,
+            ):
+                # Reintento (o doble clic): ya es la pregunta actual. No se
+                # toca nada para no cortar un tiempo de respuesta ya abierto.
+                return game
 
             game.current_question_id = question.id
             game.phase = GamePhase.QUESTION_WAITING
@@ -250,6 +403,14 @@ class GameStore:
                     status_code=400,
                     detail="La pregunta abierta no coincide con la actual",
                 )
+            if (
+                game.phase == GamePhase.ANSWERING
+                and game.current_question_id == question.id
+                and self.is_answer_window_open(game)
+            ):
+                # Reintento (o doble clic) con el tiempo ya corriendo: no se
+                # reinicia ni se borran las respuestas que ya han llegado.
+                return game
 
             game.current_question_id = question.id
             game.phase = GamePhase.ANSWERING
@@ -268,6 +429,14 @@ class GameStore:
         with self._lock_for(game_id):
             game = self.get_game(game_id)
             self._validate_presenter(game, presenter_token)
+            existing_result = game.question_results.get(question.id)
+            if existing_result is not None and game.phase in (
+                GamePhase.RESULTS,
+                GamePhase.INTERMISSION,
+            ):
+                # Ya corregida: un reintento no puede volver a sumar ni a
+                # dividir puntos.
+                return existing_result
             if game.phase not in (GamePhase.ANSWERING, GamePhase.RESULTS, GamePhase.QUESTION_WAITING):
                 raise HTTPException(status_code=400, detail="No hay ventana de respuestas abierta")
 
@@ -372,6 +541,8 @@ class GameStore:
         with self._lock_for(game_id):
             game = self.get_game(game_id)
             self._validate_presenter(game, presenter_token)
+            if game.phase == GamePhase.INTERMISSION:
+                return game
             if game.phase not in (GamePhase.RESULTS, GamePhase.QUESTION_WAITING):
                 raise HTTPException(status_code=400, detail="Solo puedes mostrar resumen tras corregir")
             game.phase = GamePhase.INTERMISSION
@@ -392,18 +563,24 @@ class GameStore:
             game = self.get_game(game_id)
             player_id, player = self._get_player_by_token(game, player_token)
 
+            existing = game.answers.get(question.id, {}).get(player_id)
+            if existing is not None and (
+                existing.selected_option_id or existing.text_answer or existing.used_joker
+            ):
+                # Reintento del móvil (la primera sí llegó) o doble toque: se
+                # queda la primera respuesta y se confirma sin error.
+                return existing
+
             if game.phase != GamePhase.ANSWERING or game.current_question_id != question.id:
                 raise HTTPException(status_code=400, detail="No puedes responder en este momento")
 
-            if not self.is_answer_window_open(game):
+            if not self.is_answer_window_open(game, grace_seconds=ANSWER_GRACE_SECONDS):
                 raise HTTPException(status_code=400, detail="El tiempo de respuesta ha terminado")
 
             if player.status != PlayerStatus.ALIVE:
                 raise HTTPException(status_code=400, detail="No puedes responder en tu estado actual")
 
             answers = game.answers.setdefault(question.id, {})
-            if player_id in answers:
-                raise HTTPException(status_code=400, detail="Ya respondiste o usaste comodín")
 
             record = AnswerRecord(
                 player_id=player_id,
@@ -430,17 +607,21 @@ class GameStore:
             game = self.get_game(game_id)
             player_id, player = self._get_player_by_token(game, player_token)
 
+            existing = game.answers.get(question.id, {}).get(player_id)
+            if existing is not None and existing.used_joker:
+                return existing  # reintento: el comodín ya quedó registrado
+
             if not player.joker_available:
                 raise HTTPException(status_code=400, detail="Ya usaste tu comodín")
             if player.status != PlayerStatus.ALIVE:
                 raise HTTPException(status_code=400, detail="No puedes usar el comodín ahora")
             if game.phase != GamePhase.ANSWERING or game.current_question_id != question.id:
                 raise HTTPException(status_code=400, detail="No puedes usar el comodín ahora")
-            if not self.is_answer_window_open(game):
+            if not self.is_answer_window_open(game, grace_seconds=ANSWER_GRACE_SECONDS):
                 raise HTTPException(status_code=400, detail="El tiempo de respuesta ha terminado")
 
             answers = game.answers.setdefault(question.id, {})
-            if player_id in answers:
+            if existing is not None:
                 raise HTTPException(status_code=400, detail="Ya respondiste o usaste el comodín")
 
             record = AnswerRecord(
@@ -459,6 +640,8 @@ class GameStore:
         with self._lock_for(game_id):
             game = self.get_game(game_id)
             self._validate_presenter(game, presenter_token)
+            if game.phase == GamePhase.FINISHED:
+                return game
             game.phase = GamePhase.FINISHED
             game.finished_at = time.time()
             # Se cierran las sesiones de los móviles, pero los jugadores y sus
@@ -473,6 +656,8 @@ class GameStore:
             self._validate_presenter(game, presenter_token)
             if game.phase != GamePhase.FINISHED:
                 raise HTTPException(status_code=400, detail="Termina la partida antes de hacer el recuento")
+            if game.recount_started_at and time.time() - game.recount_started_at < 5:
+                return game  # reintento del mismo clic: no reiniciar la animación
             game.recount_started_at = time.time()
             self._save(game)
             return game
@@ -481,14 +666,28 @@ class GameStore:
         with self._lock_for(game_id):
             game = self.get_game(game_id)
             self._validate_presenter(game, presenter_token)
+            self._deleted.add(game_id)
 
-            with self._pool.connection() as conn:
-                conn.execute(
-                    "delete from public.elporciento_games where id = %s", (game_id,)
-                )
+        # Con el volcado parado, para que no vuelva a escribir la partida
+        # justo después de borrarla.
+        with self._flush_lock:
+            with self._dirty_cond:
+                self._dirty.discard(game_id)
 
-            self._games.pop(game_id, None)
-            self._code_index.pop(game.code.upper(), None)
+            def run():
+                with self._pool.connection() as conn:
+                    conn.execute("delete from public.elporciento_games where id = %s", (game_id,))
+
+            try:
+                with_retry(run, what="borrar partida")
+            except Exception as exc:  # noqa: BLE001
+                self._deleted.discard(game_id)
+                raise HTTPException(
+                    status_code=503, detail="Base de datos no disponible, reintenta"
+                ) from exc
+
+        self._games.pop(game_id, None)
+        self._code_index.pop(game.code.upper(), None)
 
     def cash_out(
         self,
@@ -500,6 +699,11 @@ class GameStore:
         with self._lock_for(game_id):
             game = self.get_game(game_id)
             player_id, player = self._get_player_by_token(game, player_token)
+            if (
+                player.status == PlayerStatus.CASHED_OUT
+                and player.cashed_out_multiplier == multiplier
+            ):
+                return player  # reintento: ya se había plantado
             if player.status != PlayerStatus.ALIVE:
                 raise HTTPException(status_code=400, detail="No puedes plantarte en tu estado actual")
             if multiplier <= 0:
@@ -545,11 +749,10 @@ class GameStore:
                         return game.id
                 return None
 
-        with self._pool.connection() as conn:
-            row = conn.execute(
-                "select id from public.elporciento_games where data -> 'player_tokens' ? %s",
-                (player_token,),
-            ).fetchone()
+        row = self._fetch_one(
+            "select id from public.elporciento_games where data -> 'player_tokens' ? %s",
+            (player_token,),
+        )
         if not row:
             return None
 
@@ -570,14 +773,18 @@ class GameStore:
             tokens_to_delete = [token for token, pid in game.player_tokens.items() if pid == player_id]
             for t in tokens_to_delete:
                 game.player_tokens.pop(t, None)
-            game.players.pop(player_id, None)
+            kicked = game.players.pop(player_id, None)
+            if kicked:
+                for key in (kicked.external_ref, kicked.client_key):
+                    if key and key not in game.kicked_keys:
+                        game.kicked_keys.append(key)
             self._save(game)
 
-    def is_answer_window_open(self, game: GameSession) -> bool:
+    def is_answer_window_open(self, game: GameSession, grace_seconds: float = 0.0) -> bool:
         if game.answer_window_started_at is None or game.answer_duration_seconds is None:
             return False
         now = time.time()
-        return (now - game.answer_window_started_at) < game.answer_duration_seconds
+        return (now - game.answer_window_started_at) < game.answer_duration_seconds + grace_seconds
 
     def answer_time_left_ms(self, game: GameSession) -> Optional[int]:
         if game.answer_window_started_at is None or game.answer_duration_seconds is None:

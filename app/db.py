@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import logging
 import os
+import time
+from typing import Callable, TypeVar
 from urllib.parse import unquote, urlparse
 
 from psycopg.conninfo import make_conninfo
@@ -28,6 +31,10 @@ def _build_conninfo(database_url: str) -> str:
 
 _pool: ConnectionPool | None = None
 
+log = logging.getLogger("el1porciento.db")
+
+T = TypeVar("T")
+
 
 def get_pool() -> ConnectionPool:
     """Pool de conexión compartido por GameStore y QuestionStore -- ambos
@@ -45,10 +52,42 @@ def get_pool() -> ConnectionPool:
         # puerto 6543) no soporta sentencias preparadas en el servidor, y
         # psycopg las crea sola tras 5 usos de la misma consulta -- a partir
         # de ahí esas consultas fallaban de forma intermitente (500).
+        #
+        # check: comprueba cada conexión antes de prestarla -- el pooler de
+        # Supabase puede cerrar las que llevan un rato quietas, y así nunca
+        # se usa una conexión muerta.
+        # timeout: si la base no responde, se falla a los 10 s (y se
+        # reintenta) en vez de dejar la petición colgada 30 s.
         _pool = ConnectionPool(
             _build_conninfo(database_url),
-            min_size=1,
+            min_size=2,
             max_size=5,
-            kwargs={"autocommit": True, "prepare_threshold": None},
+            timeout=10,
+            max_idle=120,
+            check=ConnectionPool.check_connection,
+            kwargs={
+                "autocommit": True,
+                "prepare_threshold": None,
+                "connect_timeout": 5,
+            },
+            open=True,
         )
     return _pool
+
+
+def with_retry(fn: Callable[[], T], *, attempts: int = 4, what: str = "consulta") -> T:
+    """Ejecuta `fn` reintentando ante fallos de red/base de datos (cortes
+    puntuales del pooler de Supabase), con esperas crecientes. Solo para
+    operaciones idempotentes: lecturas o upserts completos.
+    """
+    delay = 0.2
+    for attempt in range(1, attempts + 1):
+        try:
+            return fn()
+        except Exception as exc:  # noqa: BLE001 -- cualquier fallo de la BD se reintenta igual
+            if attempt == attempts:
+                raise
+            log.warning("%s falló (intento %d/%d): %s", what, attempt, attempts, exc)
+            time.sleep(delay)
+            delay = min(delay * 2, 2.0)
+    raise AssertionError("inalcanzable")

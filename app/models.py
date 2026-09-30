@@ -163,6 +163,11 @@ class Player(BaseModel):
     # Identificador del jugador en el sistema que lo invitó (p. ej. la web de
     # la boda), para poder atribuirle los puntos sin depender de su nombre.
     external_ref: Optional[str] = None
+    # Identificador aleatorio que genera el propio móvil y guarda en su
+    # navegador: si la petición de unirse se reintenta (o el móvil pierde la
+    # sesión), vuelve al mismo jugador en vez de crear otro o chocar con su
+    # propio nombre.
+    client_key: Optional[str] = None
 
 
 class PlayerForPresenter(BaseModel):
@@ -276,6 +281,9 @@ class GameSession(BaseModel):
     roster: List[RosterEntry] = Field(default_factory=list)
     score_history: List[ScoreSnapshot] = Field(default_factory=list)
     recount_started_at: Optional[float] = None
+    # client_key/external_ref de los jugadores expulsados por el presentador,
+    # para que el reenganche automático del móvil no los vuelva a meter.
+    kicked_keys: List[str] = Field(default_factory=list)
 
     def alive_players(self) -> List[Player]:
         return [p for p in self.players.values() if p.status == PlayerStatus.ALIVE]

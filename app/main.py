@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import logging
 import os
 import secrets
+import threading
 import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 from uuid import UUID
@@ -13,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
-from .db import get_pool
+from .db import get_pool, with_retry
 from .game_store import GameStore
 from .models import (
     AnswerRecord,
@@ -37,13 +40,73 @@ STATIC_DIR = BASE_DIR.parent / "static"
 MAX_IMAGE_BYTES = 3 * 1024 * 1024
 ALLOWED_IMAGE_TYPES = {"image/svg+xml", "image/png", "image/jpeg", "image/webp"}
 
+log = logging.getLogger("el1porciento")
+
 question_store = QuestionStore()
 game_store = GameStore()
+
+# Imágenes de las preguntas en memoria (son pocas y no cambian: cada id es
+# una imagen distinta). Al unirse, cada móvil las descarga todas; sin esta
+# caché eran 60 móviles x 21 imágenes = 1.260 lecturas a Supabase de golpe.
+_image_cache: dict[str, tuple[str, bytes]] = {}
+_image_cache_lock = threading.Lock()
+
+
+def _referenced_image_ids() -> list[str]:
+    ids = []
+    for q in question_store.all_questions():
+        for url in [q.image] + [opt.image for opt in q.options or []]:
+            if url and url.startswith("/api/images/"):
+                ids.append(url.rsplit("/", 1)[-1])
+    return list(dict.fromkeys(ids))
+
+
+def _load_image(image_id: str) -> Optional[tuple[str, bytes]]:
+    cached = _image_cache.get(image_id)
+    if cached is not None:
+        return cached
+    with _image_cache_lock:
+        cached = _image_cache.get(image_id)
+        if cached is not None:
+            return cached
+
+        def run():
+            with get_pool().connection() as conn:
+                return conn.execute(
+                    "select content_type, data from public.elporciento_question_images where id = %s",
+                    (image_id,),
+                ).fetchone()
+
+        row = with_retry(run, what="leer imagen")
+        if not row:
+            return None
+        cached = (row[0], bytes(row[1]))
+        _image_cache[image_id] = cached
+        return cached
+
+
+def _warm_image_cache() -> None:
+    for image_id in _referenced_image_ids():
+        try:
+            _load_image(image_id)
+        except Exception as exc:  # noqa: BLE001 -- ya se cargará al pedirla
+            log.warning("No se pudo precargar la imagen %s: %s", image_id, exc)
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    threading.Thread(target=_warm_image_cache, name="image-warmup", daemon=True).start()
+    yield
+    # Render manda SIGTERM al redesplegar o reiniciar: se vuelca lo que quede
+    # pendiente antes de salir.
+    game_store.flush_before_exit()
+
 
 app = FastAPI(
     title="El 1% - Backend",
     description="API para partidas tipo \"El 1%\" con preguntas y partidas en Postgres.",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -88,6 +151,8 @@ class JoinGameRequest(BaseModel):
     code: str
     player_name: str
     external_ref: Optional[str] = None
+    client_key: Optional[str] = Field(None, max_length=64)
+    auto_rejoin: bool = False
 
 
 class SubmitAnswerRequest(BaseModel):
@@ -127,6 +192,11 @@ def health() -> dict:
     return {
         "status": "ok",
         "questions": len(question_store.all_questions()),
+        # Partidas con cambios aún sin guardar en Supabase y último error al
+        # guardar (null si todo va bien): para comprobarlo antes del evento.
+        "pending_writes": game_store.pending_writes(),
+        "db_error": game_store.last_flush_error,
+        "images_cached": len(_image_cache),
     }
 
 
@@ -247,19 +317,16 @@ def get_image(image_id: str) -> Response:
     except ValueError:
         raise HTTPException(status_code=404, detail="Imagen no encontrada")
 
-    pool = get_pool()
-    with pool.connection() as conn:
-        row = conn.execute(
-            "select content_type, data from public.elporciento_question_images where id = %s",
-            (image_id,),
-        ).fetchone()
-
-    if not row:
+    try:
+        image = _load_image(image_id)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=503, detail="Base de datos no disponible, reintenta") from exc
+    if image is None:
         raise HTTPException(status_code=404, detail="Imagen no encontrada")
 
-    content_type, data = row
+    content_type, data = image
     return Response(
-        content=bytes(data),
+        content=data,
         media_type=content_type,
         headers={"Cache-Control": "public, max-age=31536000, immutable"},
     )
@@ -403,9 +470,6 @@ def next_question(game_id: str, payload: NextQuestionRequest) -> dict:
 def open_answers(game_id: str, payload: OpenAnswersRequest) -> dict:
     game = game_store.get_game(game_id)
     _require_presenter_token(game, payload.presenter_token)
-    # salir de intermission cuando se abre nueva ventana
-    if game.phase == GamePhase.INTERMISSION:
-        game.phase = GamePhase.ANSWERING
 
     if payload.question_id:
         question = question_store.get_by_id(payload.question_id)
@@ -485,7 +549,11 @@ def delete_game(game_id: str, presenter_token: str = Query(...)) -> dict:
 @app.post("/api/games/join")
 def join_game(payload: JoinGameRequest) -> dict:
     game, player, player_token = game_store.join_game(
-        payload.code.upper(), payload.player_name, external_ref=payload.external_ref
+        payload.code.upper(),
+        payload.player_name,
+        external_ref=payload.external_ref,
+        client_key=payload.client_key,
+        auto_rejoin=payload.auto_rejoin,
     )
     return {
         "game_id": game.id,

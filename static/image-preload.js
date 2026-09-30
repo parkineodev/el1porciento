@@ -10,7 +10,9 @@ const ImagePreloader = (() => {
   async function fetchWithRetry(url, attempts = 5) {
     for (let i = 0; i < attempts; i++) {
       try {
-        const res = await fetch(url);
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 15000);
+        const res = await fetch(url, { signal: controller.signal }).finally(() => clearTimeout(timer));
         if (res.ok) return res;
       } catch (_) {
         // red caída o error puntual: se reintenta

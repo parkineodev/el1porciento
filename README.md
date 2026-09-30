@@ -59,6 +59,13 @@ el1porciento/
 └─ README.md
 ```
 
+## Fiabilidad durante la partida
+
+- La partida vive en memoria y se guarda en Supabase en segundo plano (cada ~0,25 s, agrupando cambios y reintentando si falla): un corte de la base de datos no para el juego. Por eso debe correr **un solo proceso** (sin `--workers`).
+- Todas las acciones se pueden repetir sin efectos dobles (responder, comodín, plantarse, abrir/cerrar pregunta, siguiente...), así que los navegadores las reintentan solos (`static/net.js`).
+- Se aceptan respuestas hasta 3 s después de acabar el tiempo, mientras la pregunta siga abierta.
+- No subas cambios el día del evento: cada despliegue reinicia el servidor.
+
 ## Variables de entorno
 
 - `DATABASE_URL` — cadena de conexión a Postgres/Supabase (obligatoria).
@@ -67,7 +74,7 @@ el1porciento/
 
 ## Endpoints principales (resumen)
 
-- `GET  /api/health` — Ping.
+- `GET  /api/health` — Ping. Incluye `pending_writes` (partidas con cambios aún sin guardar en Supabase), `db_error` (último error al guardar, `null` si todo va bien) e `images_cached`. Antes de jugar debe dar `pending_writes: 0` y `db_error: null`.
 - `GET  /api/questions` — Lista todas las preguntas (`?include_correct=true` para ver soluciones).
 - `GET  /api/questions/first` y `/api/questions/{id}/next` — Navegación por orden.
 - `GET  /api/images/{id}` — Sirve una imagen subida desde el admin.

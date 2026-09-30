@@ -88,6 +88,7 @@
     </section>
   </main>
 
+  <script src="/static/net.js"></script>
   <script src="/static/image-preload.js"></script>
   <script>
     const overlay = document.getElementById('overlay');
@@ -141,20 +142,55 @@
           playerToken: localStorage.getItem('player_token'),
           playerName: localStorage.getItem('player_name'),
           code: localStorage.getItem('player_code'),
+          externalRef: localStorage.getItem('player_external_ref'),
         };
       },
-      set({ gameId, playerToken, playerName, code }) {
+      set({ gameId, playerToken, playerName, code, externalRef }) {
         localStorage.setItem('player_game_id', gameId);
         localStorage.setItem('player_token', playerToken);
         localStorage.setItem('player_name', playerName);
         localStorage.setItem('player_code', code);
+        if (externalRef) localStorage.setItem('player_external_ref', externalRef);
+        else localStorage.removeItem('player_external_ref');
       },
       clear() {
-        ['player_game_id', 'player_token', 'player_name', 'player_code'].forEach(k => localStorage.removeItem(k));
+        ['player_game_id', 'player_token', 'player_name', 'player_code', 'player_external_ref'].forEach(k => localStorage.removeItem(k));
       }
     };
 
-    let pollInterval = null;
+    // Clave aleatoria de este móvil: si la petición de unirse se reintenta o
+    // se pierde la sesión, el servidor lo reconoce como el mismo jugador.
+    function clientKey() {
+      let key = localStorage.getItem('player_client_key');
+      if (!key) {
+        key = (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`).replace(/-/g, '').slice(0, 32);
+        localStorage.setItem('player_client_key', key);
+      }
+      return key;
+    }
+
+    // Acción pendiente de confirmar por el servidor (respuesta, comodín o
+    // plantarse). Se guarda en el móvil y se reenvía hasta que llega, aunque
+    // se recargue la página; mientras, la pantalla ya la da por hecha.
+    const pendingStore = {
+      get() {
+        try {
+          return JSON.parse(localStorage.getItem('player_pending_action') || 'null');
+        } catch (_) {
+          return null;
+        }
+      },
+      set(action) {
+        localStorage.setItem('player_pending_action', JSON.stringify(action));
+      },
+      clear() {
+        localStorage.removeItem('player_pending_action');
+      },
+    };
+
+    Net.connectionBadge();
+
+    let poller = null;
     let lastState = null;
     let currentQuestionId = null;
     let freeTextDraft = '';
@@ -204,27 +240,37 @@
       });
     }
 
+    let joining = false;
+
     async function joinGame(code, name, externalRef) {
+      if (joining) return;
+      joining = true;
+      joinHint.textContent = 'Conectando...';
       try {
-        joinHint.textContent = 'Conectando...';
-        const res = await fetch('/api/games/join', {
+        // Se reintenta solo: si una respuesta se pierde por el camino, la
+        // clave del móvil hace que el reintento devuelva el mismo jugador.
+        const data = await Net.request('/api/games/join', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ code, player_name: name, external_ref: externalRef || undefined }),
+          body: {
+            code,
+            player_name: name,
+            external_ref: externalRef || undefined,
+            client_key: clientKey(),
+          },
+          retries: 8,
         });
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          throw new Error(err.detail || 'No se pudo unir');
-        }
-        const data = await res.json();
-        storage.set({ gameId: data.game_id, playerToken: data.player_token, playerName: name, code: data.code });
+        storage.set({ gameId: data.game_id, playerToken: data.player_token, playerName: name, code: data.code, externalRef });
         codeBadge.textContent = `Código: ${data.code}`;
         setStatus(`Jugador: ${name}`, 'var(--panel-strong)');
         startPolling();
         showGame();
         joinHint.textContent = '';
       } catch (e) {
-        joinHint.textContent = e.message;
+        joinHint.textContent = e.status
+          ? e.detail || 'No se pudo unir'
+          : 'No hay conexión con el juego. Comprueba tu conexión y vuelve a intentarlo.';
+      } finally {
+        joining = false;
       }
     }
 
@@ -304,40 +350,101 @@
     resetBtn.addEventListener('click', () => {
       const { gameId, playerToken } = storage.get();
       if (gameId && playerToken) {
-        fetch(`/api/games/${gameId}/leave?player_token=${encodeURIComponent(playerToken)}`, { method: 'POST' }).catch(() => {});
+        Net.request(`/api/games/${gameId}/leave?player_token=${encodeURIComponent(playerToken)}`, {
+          method: 'POST',
+          retries: 3,
+        }).catch(() => {});
       }
       storage.clear();
+      pendingStore.clear();
+      pending = null;
+      // Quien sale a propósito entra después como jugador nuevo.
+      localStorage.removeItem('player_client_key');
       lastState = null;
       currentQuestionId = null;
       freeTextDraft = '';
-      if (pollInterval) clearInterval(pollInterval);
+      if (poller) poller.stop();
+      poller = null;
       showJoinForm();
       hideOverlay();
     });
 
+    function sessionLost(message) {
+      const { code, playerName } = storage.get();
+      storage.clear();
+      pendingStore.clear();
+      pending = null;
+      if (poller) poller.stop();
+      poller = null;
+      lastState = null;
+      currentQuestionId = null;
+      if (code) codeInput.value = code;
+      if (playerName) nameInput.value = playerName;
+      showJoinForm();
+      hideOverlay();
+      joinHint.textContent = message;
+    }
+
+    // El servidor ya no reconoce la sesión (p. ej. un reinicio justo tras
+    // unirse): se vuelve a unir solo con la clave del móvil, sin que el
+    // jugador tenga que hacer nada. Solo se le devuelve al formulario si la
+    // partida terminó o el presentador lo sacó.
+    let rejoining = false;
+    async function recoverSession() {
+      if (rejoining) return;
+      rejoining = true;
+      const { code, playerName, externalRef } = storage.get();
+      try {
+        const data = await Net.request('/api/games/join', {
+          method: 'POST',
+          body: {
+            code,
+            player_name: playerName,
+            external_ref: externalRef || undefined,
+            client_key: clientKey(),
+            auto_rejoin: true,
+          },
+          retries: 5,
+        });
+        storage.set({ gameId: data.game_id, playerToken: data.player_token, playerName, code: data.code, externalRef });
+        refresh();
+        sendPending();
+      } catch (e) {
+        if (e.status) sessionLost(e.detail || 'Tu sesión ha caducado. Vuelve a unirte.');
+        // Sin conexión: se vuelve a intentar en el siguiente sondeo.
+      } finally {
+        rejoining = false;
+      }
+    }
+
+    let missingStreak = 0;
+
     async function fetchState() {
       const { gameId, playerToken, playerName, code } = storage.get();
       if (!gameId || !playerToken) return;
+      let state;
       try {
-        const res = await fetch(`/api/games/${gameId}/player/state?player_token=${encodeURIComponent(playerToken)}`);
-        if (res.status === 401) {
-          actionHint.textContent = 'Fuiste expulsado o tu sesión expiró. Vuelve a unirte.';
-          storage.clear();
-          showJoinForm();
-          hideOverlay();
+        state = await Net.request(
+          `/api/games/${gameId}/player/state?player_token=${encodeURIComponent(playerToken)}`,
+          { timeoutMs: 6000 },
+        );
+      } catch (e) {
+        if (e.status === 401) {
+          await recoverSession();
           return;
         }
-        if (!res.ok) throw new Error('No se pudo actualizar estado');
-        const state = await res.json();
-        lastState = state;
-        codeBadge.textContent = `Código: ${code || '—'}`;
-        setStatus(`Jugador: ${playerName || '—'}`, 'var(--panel-strong)');
-        renderState(state);
-      } catch (e) {
-        actionHint.textContent = e.message;
-        questionCard.style.pointerEvents = 'auto';
-        hideOverlay();
+        if (e.status === 404) {
+          if (++missingStreak >= 3) sessionLost('Esa partida ya no existe. Vuelve a unirte.');
+          return;
+        }
+        throw e; // sin conexión o servidor ocupado: el sondeo espacia y reintenta
       }
+      missingStreak = 0;
+      if (storage.get().playerToken !== playerToken) return; // la sesión cambió mientras tanto
+      lastState = state;
+      codeBadge.textContent = `Código: ${code || '—'}`;
+      setStatus(`Jugador: ${playerName || '—'}`, 'var(--panel-strong)');
+      renderState(applyPending(state));
     }
 
     function renderTimer(state) {
@@ -361,7 +468,8 @@
           ? state.current_question.time_limit_seconds * 1000
           : ms;
         timerEndsAt = Date.now() + ms;
-        // Programar autoenvío para preguntas de texto libre un poco antes de que termine
+        // Autoenvío del texto libre 1 s antes del final, para que llegue a
+        // tiempo aunque la red vaya lenta (el servidor da además 3 s de margen).
         if (
           state.current_question?.type === 'free_text' &&
           state.alive &&
@@ -378,7 +486,7 @@
               autoSubmittedFor = state.current_question.id;
               submitAnswer(state.current_question.id, null, freeTextInput.value);
             }
-          }, Math.max(0, ms - 100));
+          }, Math.max(0, ms - 1000));
         }
         const update = () => {
           const remaining = Math.max(0, timerEndsAt - Date.now());
@@ -605,51 +713,115 @@
       }
     }
 
-    async function submitAnswer(questionId, optionId, text) {
+    // Mientras el servidor no confirma la acción pendiente, la pantalla se
+    // pinta como si ya hubiera llegado.
+    function applyPending(state) {
+      const action = pending;
+      if (!action || !state || action.gameId !== state.game_id) return state;
+      const q = state.current_question;
+      if (
+        (action.kind === 'answer' || action.kind === 'joker') &&
+        q &&
+        q.id === action.body.question_id &&
+        state.phase === 'answering' &&
+        state.status === 'alive'
+      ) {
+        return {
+          ...state,
+          has_answered: true,
+          last_answer:
+            action.kind === 'answer' ? action.body.selected_option_id || action.body.text_answer : state.last_answer,
+          joker_available: action.kind === 'joker' ? false : state.joker_available,
+        };
+      }
+      if (action.kind === 'cashout' && state.status === 'alive') {
+        return {
+          ...state,
+          status: 'cashed_out',
+          alive: false,
+          cashed_out_multiplier: action.body.multiplier,
+          score: state.score * action.body.multiplier,
+          can_cashout_keep: false,
+          can_cashout_boost: false,
+        };
+      }
+      return state;
+    }
+
+    function queueAction(action) {
+      pending = action;
+      pendingStore.set(action);
+      if (lastState) renderState(applyPending(lastState));
+      sendPending();
+    }
+
+    function settle(action) {
+      if (pending === action) {
+        pending = null;
+        pendingStore.clear();
+      }
+      refresh();
+    }
+
+    let sendingPending = false;
+    let pendingRetryTimer = null;
+
+    async function sendPending() {
+      if (!pending || sendingPending) return;
+      const action = pending;
       const { gameId, playerToken } = storage.get();
-      if (!gameId || !playerToken) return;
+      if (!gameId || !playerToken || action.gameId !== gameId) {
+        settle(action);
+        return;
+      }
+      sendingPending = true;
+      clearTimeout(pendingRetryTimer);
       try {
-        const res = await fetch(`/api/games/${gameId}/answer`, {
+        await Net.request(`/api/games/${gameId}/${action.path}`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            player_token: playerToken,
-            question_id: questionId,
-            selected_option_id: optionId,
-            text_answer: text,
-          }),
+          body: { ...action.body, player_token: playerToken },
+          retries: 6,
+          shouldContinue: () => pending === action,
         });
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          throw new Error(err.detail || 'No se pudo enviar la respuesta');
-        }
-        freeTextDraft = '';
-        fetchState();
+        settle(action); // confirmada
       } catch (e) {
-        actionHint.textContent = e.message;
+        if (e.status === 401) {
+          // Sesión perdida: se recupera y se vuelve a mandar.
+          recoverSession();
+          pendingRetryTimer = setTimeout(sendPending, 1500);
+        } else if (e.status && !Net.isRetryable(e.status)) {
+          // Rechazo definitivo (p. ej. la pregunta ya se cerró): manda lo
+          // que diga el servidor en el siguiente sondeo.
+          settle(action);
+        } else {
+          pendingRetryTimer = setTimeout(sendPending, 2000); // sigue sin conexión
+        }
+      } finally {
+        sendingPending = false;
       }
     }
 
-    async function useJoker() {
-      const { gameId, playerToken } = storage.get();
-      if (!gameId || !playerToken || !lastState?.current_question) return;
-      try {
-        const res = await fetch(`/api/games/${gameId}/joker`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            player_token: playerToken,
-            question_id: lastState.current_question.id,
-          }),
-        });
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          throw new Error(err.detail || 'No se pudo usar el comodín');
-        }
-        fetchState();
-      } catch (e) {
-        actionHint.textContent = e.message;
-      }
+    function submitAnswer(questionId, optionId, text) {
+      const { gameId } = storage.get();
+      if (!gameId) return;
+      if (pending && pending.gameId === gameId && pending.body.question_id === questionId) return; // ya enviada
+      if (lastState?.has_answered && lastState?.current_question?.id === questionId) return;
+      freeTextDraft = '';
+      queueAction({
+        kind: 'answer',
+        path: 'answer',
+        gameId,
+        createdAt: Date.now(),
+        body: { question_id: questionId, selected_option_id: optionId, text_answer: text },
+      });
+    }
+
+    function useJoker() {
+      const { gameId } = storage.get();
+      const q = lastState?.current_question;
+      if (!gameId || !q) return;
+      if (pending && pending.gameId === gameId && pending.body.question_id === q.id) return;
+      queueAction({ kind: 'joker', path: 'joker', gameId, createdAt: Date.now(), body: { question_id: q.id } });
     }
 
     jokerBtn.addEventListener('click', useJoker);
@@ -663,43 +835,45 @@
       freeTextDraft = e.target.value;
     });
 
-    async function cashOut(multiplier, state) {
-      const { gameId, playerToken } = storage.get();
-      if (!gameId || !playerToken) return;
+    function cashOut(multiplier, state) {
+      const { gameId } = storage.get();
+      if (!gameId) return;
       const canKeep = state?.can_cashout_keep && state?.status === 'alive';
       const canBoost = state?.can_cashout_boost && state?.status === 'alive';
-      if ((multiplier === 1 && !canKeep) || (multiplier > 1 && !canBoost)) {
-        actionHint.textContent = 'No puedes plantarte en este momento';
-        return;
-      }
-      try {
-        const res = await fetch(`/api/games/${gameId}/cashout`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ player_token: playerToken, multiplier }),
-        });
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          throw new Error(err.detail || 'No se pudo plantar');
-        }
-        await fetchState();
-      } catch (e) {
-        actionHint.textContent = e.message;
-      }
+      if ((multiplier === 1 && !canKeep) || (multiplier > 1 && !canBoost)) return;
+      if (pending && pending.kind === 'cashout') return;
+      queueAction({ kind: 'cashout', path: 'cashout', gameId, createdAt: Date.now(), body: { multiplier } });
+    }
+
+    function refresh() {
+      if (poller) poller.now();
     }
 
     function startPolling() {
-      if (pollInterval) clearInterval(pollInterval);
-      fetchState();
-      pollInterval = setInterval(fetchState, 900);
+      if (poller) poller.stop();
+      poller = Net.poll(fetchState, 1000);
+      sendPending();
     }
 
-    // Refrescar al volver al foco (por ejemplo, cuando el presentador abre plantarse)
+    // Al volver a la pestaña o recuperar la red: se consulta ya y se reenvía
+    // lo pendiente.
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden) {
-        fetchState();
+        refresh();
+        sendPending();
       }
     });
+    window.addEventListener('online', () => {
+      refresh();
+      sendPending();
+    });
+
+    // Una acción pendiente de hace mucho ya no tiene sentido reenviarla.
+    let pending = pendingStore.get();
+    if (pending && Date.now() - (pending.createdAt || 0) > 10 * 60 * 1000) {
+      pending = null;
+      pendingStore.clear();
+    }
 
     // Auto-rejoin if data exists
     const saved = storage.get();
